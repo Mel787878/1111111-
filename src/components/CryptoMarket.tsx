@@ -49,7 +49,7 @@ export const CryptoMarket = () => {
             <h2 className="text-4xl md:text-5xl font-bold text-center bg-gradient-to-r from-[#9b87f5] via-[#D946EF] to-[#8B5CF6] bg-clip-text text-transparent">
               Landing Page Templates
             </h2>
-            <TonConnectButton />
+            <TonConnectButton className="!bg-primary hover:!bg-primary/90" />
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">

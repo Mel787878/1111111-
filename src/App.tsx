@@ -14,7 +14,12 @@ const queryClient = new QueryClient();
 const manifestUrl = 'https://lovable.dev/projects/96a96d3e-c9dc-45ae-b635-36c1f5745957/tonconnect-manifest.json';
 
 const App = () => (
-  <TonConnectUIProvider manifestUrl={manifestUrl}>
+  <TonConnectUIProvider 
+    manifestUrl={manifestUrl}
+    actionsConfiguration={{
+      twaReturnUrl: 'https://lovable.dev/projects/96a96d3e-c9dc-45ae-b635-36c1f5745957'
+    }}
+  >
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
