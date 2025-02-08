@@ -20,23 +20,19 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
 
   const handlePurchase = async () => {
     if (!wallet) {
-      toast({
-        title: "Wallet not connected",
-        description: "Please connect your TON wallet to make a purchase",
-        variant: "destructive",
-      });
+      tonConnectUI.openModal();
       return;
     }
 
     setIsProcessing(true);
     try {
-      const priceInNanoTons = Math.floor(template.price * 1000000000); // Convert TON to nanoTons
+      const priceInNanoTons = Math.floor(template.price * 1000000000);
       
       const transaction = {
-        validUntil: Math.floor(Date.now() / 1000) + 300, // 5 minutes
+        validUntil: Math.floor(Date.now() / 1000) + 300,
         messages: [
           {
-            address: "UQCt1L-jsQiZ_lpT-PVYVwUVb-rHDuJd-bCN6GdZbL1_qznC", // Replace with your address
+            address: "UQCt1L-jsQiZ_lpT-PVYVwUVb-rHDuJd-bCN6GdZbL1_qznC",
             amount: priceInNanoTons.toString(),
           },
         ],
@@ -104,9 +100,9 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
             <Button 
               className="bg-gradient-to-r from-primary to-secondary hover:from-primary/90 hover:to-secondary/90 text-white"
               onClick={handlePurchase}
-              disabled={isProcessing || !wallet}
+              disabled={isProcessing}
             >
-              {isProcessing ? "Processing..." : wallet ? "Purchase" : "Connect Wallet"}
+              {isProcessing ? "Processing..." : "Purchase"}
             </Button>
           </div>
         </CardFooter>
