@@ -11,8 +11,7 @@ import { CryptoMarket } from "./components/CryptoMarket";
 
 const queryClient = new QueryClient();
 
-// This should match the path to your manifest file
-const manifestUrl = 'https://your-app-url.com/tonconnect-manifest.json';
+const manifestUrl = 'https://lovable.dev/projects/96a96d3e-c9dc-45ae-b635-36c1f5745957/tonconnect-manifest.json';
 
 const App = () => (
   <TonConnectUIProvider manifestUrl={manifestUrl}>
