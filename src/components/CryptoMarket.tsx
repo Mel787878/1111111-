@@ -1,6 +1,37 @@
 
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { Template } from "@/types/template";
+import { TemplateCard } from "./market/TemplateCard";
+
+const mockTemplates: Template[] = [
+  {
+    id: "1",
+    name: "Modern Portfolio",
+    price: 49.99,
+    rating: 4.8,
+    description: "Clean and professional portfolio template with smooth animations and responsive design.",
+    features: ["Responsive Design", "Animation Effects", "Dark/Light Mode", "Contact Form"],
+    image: "https://images.unsplash.com/photo-1487058792275-0ad4aaf24ca7?fit=crop&w=800&h=450"
+  },
+  {
+    id: "2",
+    name: "Crypto Dashboard",
+    price: 79.99,
+    rating: 4.9,
+    description: "Advanced crypto dashboard template with real-time price tracking and portfolio management.",
+    features: ["Live Price Updates", "Portfolio Tracker", "Transaction History", "Market Analysis"],
+    image: "https://images.unsplash.com/photo-1498050108023-c5249f4df085?fit=crop&w=800&h=450"
+  },
+  {
+    id: "3",
+    name: "Business Landing",
+    price: 39.99,
+    rating: 4.7,
+    description: "Professional landing page template perfect for businesses and startups.",
+    features: ["SEO Optimized", "Fast Loading", "Custom Sections", "Newsletter Integration"],
+    image: "https://images.unsplash.com/photo-1518005020951-eccb494ad742?fit=crop&w=800&h=450"
+  }
+];
 
 export const CryptoMarket = () => {
   return (
@@ -16,8 +47,12 @@ export const CryptoMarket = () => {
         </h2>
         
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
-          {/* Template cards will be added here */}
-          <div className="text-white text-center">Coming Soon</div>
+          {mockTemplates.map((template) => (
+            <TemplateCard
+              key={template.id}
+              template={template}
+            />
+          ))}
         </div>
       </motion.div>
     </div>
