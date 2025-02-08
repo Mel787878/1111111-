@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { Template } from "@/types/template";
 import { TemplateCard } from "./market/TemplateCard";
 import { SocialLinks } from "./SocialLinks";
+import { TonConnectButton } from "@tonconnect/ui-react";
 
 const mockTemplates: Template[] = [
   {
@@ -44,9 +45,12 @@ export const CryptoMarket = () => {
           transition={{ duration: 0.5 }}
           className="container mx-auto"
         >
-          <h2 className="text-4xl md:text-5xl font-bold text-center mb-12 bg-gradient-to-r from-[#9b87f5] via-[#D946EF] to-[#8B5CF6] bg-clip-text text-transparent">
-            Landing Page Templates
-          </h2>
+          <div className="flex justify-between items-center mb-12">
+            <h2 className="text-4xl md:text-5xl font-bold text-center bg-gradient-to-r from-[#9b87f5] via-[#D946EF] to-[#8B5CF6] bg-clip-text text-transparent">
+              Landing Page Templates
+            </h2>
+            <TonConnectButton />
+          </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
             {mockTemplates.map((template) => (

@@ -4,12 +4,63 @@ import { StarIcon } from "lucide-react";
 import { Template } from "@/types/template";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import { useTonConnectUI, useTonWallet } from "@tonconnect/ui-react";
+import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 interface TemplateCardProps {
   template: Template;
 }
 
 export const TemplateCard = ({ template }: TemplateCardProps) => {
+  const wallet = useTonWallet();
+  const [tonConnectUI] = useTonConnectUI();
+  const [isProcessing, setIsProcessing] = useState(false);
+  const { toast } = useToast();
+
+  const handlePurchase = async () => {
+    if (!wallet) {
+      toast({
+        title: "Wallet not connected",
+        description: "Please connect your TON wallet to make a purchase",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      const priceInNanoTons = Math.floor(template.price * 1000000000); // Convert TON to nanoTons
+      
+      const transaction = {
+        validUntil: Math.floor(Date.now() / 1000) + 300, // 5 minutes
+        messages: [
+          {
+            address: "UQCt1L-jsQiZ_lpT-PVYVwUVb-rHDuJd-bCN6GdZbL1_qznC", // Replace with your address
+            amount: priceInNanoTons.toString(),
+          },
+        ],
+      };
+
+      const result = await tonConnectUI.sendTransaction(transaction);
+      console.log("Transaction result:", result);
+      
+      toast({
+        title: "Purchase successful",
+        description: "Your template purchase was successful!",
+      });
+    } catch (error: any) {
+      console.error("Transaction error:", error);
+      toast({
+        title: "Transaction failed",
+        description: error.message || "Failed to complete the purchase",
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -48,12 +99,14 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
         <CardFooter className="p-6 pt-0 mt-auto">
           <div className="w-full flex items-center justify-between">
             <span className="text-2xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-              ${template.price}
+              ${template.price} TON
             </span>
             <Button 
               className="bg-gradient-to-r from-primary to-secondary hover:from-primary/90 hover:to-secondary/90 text-white"
+              onClick={handlePurchase}
+              disabled={isProcessing || !wallet}
             >
-              Purchase
+              {isProcessing ? "Processing..." : wallet ? "Purchase" : "Connect Wallet"}
             </Button>
           </div>
         </CardFooter>
