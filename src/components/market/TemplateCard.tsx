@@ -24,16 +24,16 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
 
   const verifyTransaction = async (tx: { boc: string }): Promise<string> => {
     try {
-      // Parse the message from the transaction using v2 endpoint
-      const message = await tonApi.blockchain.parseTransactionBoc({ boc: tx.boc });
+      // Parse the transaction using the correct method
+      const message = await tonApi.blockchain.parseBoc({ boc: tx.boc });
       
       // Wait for transaction propagation
       await new Promise(resolve => setTimeout(resolve, 5000));
       
-      // Get the transaction status using v2 endpoint
+      // Get the transaction status using the correct method
       const addr = Address.parse(message.destination);
-      const transactions = await tonApi.blockchain.getAccountTransactionsV2({ 
-        accountId: addr,
+      const transactions = await tonApi.blockchain.getTransactions({ 
+        account: addr.toString(),
         limit: 10 
       });
       
