@@ -30,6 +30,22 @@ const WebhookPayloadSchema = z.object({
   })
 });
 
+// Simple in-memory queue for webhook processing
+const webhookQueue: Array<{ payload: any, timestamp: number }> = [];
+const QUEUE_PROCESS_INTERVAL = 1000; // Process queue every second
+
+// Process queue periodically
+setInterval(() => {
+  while (webhookQueue.length > 0) {
+    const webhook = webhookQueue.shift();
+    if (webhook) {
+      processWebhook(webhook.payload).catch(error => {
+        logEvent('error', 'Queue processing error', { error });
+      });
+    }
+  }
+}, QUEUE_PROCESS_INTERVAL);
+
 // Helper function for structured logging with error stack traces
 const logEvent = (type: 'info' | 'error' | 'warning', message: string, data?: any) => {
   const timestamp = new Date().toISOString();
@@ -43,6 +59,36 @@ const logEvent = (type: 'info' | 'error' | 'warning', message: string, data?: an
   console.log(JSON.stringify(logData, null, 2));
 };
 
+// Process individual webhook
+async function processWebhook(payload: any) {
+  try {
+    // Here you would implement the actual webhook processing logic
+    logEvent('info', 'Processing webhook from queue', {
+      event_id: payload.event_id,
+      transaction_hash: payload.transaction.hash
+    });
+    
+    // Add your webhook processing logic here
+    
+  } catch (error) {
+    logEvent('error', 'Webhook processing error', { error });
+    throw error;
+  }
+}
+
+// Validate TON API key
+function validateApiKey(request: VercelRequest): boolean {
+  const apiKey = process.env.TONAPI_KEY;
+  const providedKey = request.headers['x-ton-api-key'];
+  
+  if (!apiKey) {
+    logEvent('warning', 'TONAPI_KEY not configured in environment');
+    return false;
+  }
+  
+  return apiKey === providedKey;
+}
+
 const handler = async (request: VercelRequest, response: VercelResponse) => {
   // Handle CORS preflight
   if (request.method === 'OPTIONS') {
@@ -53,6 +99,12 @@ const handler = async (request: VercelRequest, response: VercelResponse) => {
   if (request.method !== 'POST') {
     logEvent('error', 'Invalid method', { method: request.method });
     return response.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // Validate API key
+  if (!validateApiKey(request)) {
+    logEvent('error', 'Invalid or missing API key');
+    return response.status(401).json({ error: 'Invalid or missing API key' });
   }
 
   // Validate Content-Type header
@@ -73,6 +125,11 @@ const handler = async (request: VercelRequest, response: VercelResponse) => {
       ? JSON.parse(request.body) 
       : request.body;
 
+    if (!body) {
+      logEvent('error', 'Empty request body');
+      return response.status(400).json({ error: 'Empty request body' });
+    }
+
     // Validate webhook payload
     const result = WebhookPayloadSchema.safeParse(body);
     
@@ -89,18 +146,26 @@ const handler = async (request: VercelRequest, response: VercelResponse) => {
 
     const payload = result.data;
 
+    // Add to processing queue
+    webhookQueue.push({
+      payload,
+      timestamp: Date.now()
+    });
+
     // Log successful webhook receipt with detailed information
-    logEvent('info', 'Webhook received', {
+    logEvent('info', 'Webhook received and queued', {
       event_id: payload.event_id,
       transaction_hash: payload.transaction.hash,
       account_address: payload.account.address,
       value: payload.transaction.value,
-      timestamp: payload.timestamp
+      timestamp: payload.timestamp,
+      queue_length: webhookQueue.length
     });
 
     return response.status(200).json({ 
       status: 'success',
-      event_id: payload.event_id 
+      event_id: payload.event_id,
+      queued: true 
     });
 
   } catch (error) {
