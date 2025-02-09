@@ -34,12 +34,62 @@ serve(async (req) => {
       );
     }
 
-    // Call TON API to check transaction status
-    console.log('📡 Calling TON API...');
+    // First get the message hash from the boc
+    console.log('📡 Getting message hash from BOC...');
+    let messageResponse;
+    try {
+      messageResponse = await fetch(
+        'https://tonapi.io/v2/blockchain/message',
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${tonApiKey}`,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            boc: transaction_hash
+          })
+        }
+      );
+    } catch (error) {
+      console.error('❌ Failed to get message hash:', error);
+      return new Response(
+        JSON.stringify({ 
+          status: 'error',
+          message: 'Failed to get message hash'
+        }),
+        { 
+          status: 503,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    if (!messageResponse.ok) {
+      console.error('❌ Message API error:', messageResponse.status);
+      return new Response(
+        JSON.stringify({ 
+          status: 'error',
+          message: 'Message API error'
+        }),
+        { 
+          status: messageResponse.status,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    const messageData = await messageResponse.json();
+    const hash = messageData.hash;
+    console.log('✅ Got message hash:', hash);
+
+    // Now check transaction status using the hash
+    console.log('📡 Checking transaction status...');
     let response;
     try {
       response = await fetch(
-        `https://tonapi.io/v2/blockchain/transactions/${transaction_hash}`, 
+        `https://tonapi.io/v2/blockchain/transactions/${hash}`, 
         {
           headers: {
             'Authorization': `Bearer ${tonApiKey}`,
