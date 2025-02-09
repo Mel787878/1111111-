@@ -8,8 +8,6 @@ import { useTonConnectUI, useTonWallet } from "@tonconnect/ui-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { getJettonTransferRequest } from "@/utils/jetton-transfer";
-import tonApi from "@/utils/ton-api";
 
 interface TemplateCardProps {
   template: Template;
@@ -21,34 +19,13 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
 
-  const verifyTransaction = async (tx: { boc: string }): Promise<string> => {
-    try {
-      // Parse the message from the transaction
-      const message = await tonApi.blockchain.parseMessage({ boc: tx.boc });
-      
-      // Wait for transaction propagation
-      await new Promise(resolve => setTimeout(resolve, 5000));
-      
-      // Get the transaction status
-      const transactions = await tonApi.accounts.getAccountTransactions(message.source);
-      
-      // Find the matching transaction
-      const transaction = transactions.transactions.find(t => 
-        t.out_msgs.some(msg => 
-          msg.destination === message.destination && 
-          msg.value === message.value
-        )
-      );
+  const verifyTransaction = async (boc: string): Promise<string> => {
+    const { data, error } = await supabase.functions.invoke('verify-transaction', {
+      body: { boc }
+    });
 
-      if (!transaction) {
-        return 'pending';
-      }
-
-      return transaction.success ? 'confirmed' : 'failed';
-    } catch (error) {
-      console.error('Transaction verification error:', error);
-      throw error;
-    }
+    if (error) throw error;
+    return data.status;
   };
 
   const handlePurchase = async () => {
@@ -59,13 +36,20 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
       }
 
       setIsProcessing(true);
+      
+      // Convert price to nanoTONs
+      const priceInNanoTons = Math.floor(template.price * 1_000_000_000).toString();
 
-      // Create transaction request using the utility
-      const transaction = getJettonTransferRequest(
-        template.price.toString(),
-        "UQCt1L-jsQiZ_lpT-PVYVwUVb-rHDuJd-bCN6GdZbL1_qznC",
-        template.price
-      );
+      // Create transaction payload
+      const transaction = {
+        validUntil: Math.floor(Date.now() / 1000) + 300, // 5 minutes
+        messages: [
+          {
+            address: "UQCt1L-jsQiZ_lpT-PVYVwUVb-rHDuJd-bCN6GdZbL1_qznC",
+            amount: priceInNanoTons,
+          },
+        ],
+      };
 
       // Send transaction
       const result = await tonConnectUI.sendTransaction(transaction);
@@ -91,7 +75,7 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
 
       // Poll for transaction status
       let attempts = 0;
-      const maxAttempts = 12; // 1 minute total
+      const maxAttempts = 20;
       const interval = 5000; // 5 seconds
 
       const checkStatus = async () => {
@@ -106,7 +90,7 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
         }
 
         try {
-          const status = await verifyTransaction(result);
+          const status = await verifyTransaction(result.boc);
           
           if (status === 'confirmed') {
             toast({
@@ -127,6 +111,7 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
             return;
           }
 
+          // If pending, retry after interval
           attempts++;
           setTimeout(checkStatus, interval);
           
