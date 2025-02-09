@@ -23,15 +23,9 @@ serve(async (req) => {
     const { transaction_hash } = await req.json();
     console.log('Received transaction hash:', transaction_hash);
 
-    // Base64 decode the transaction hash if needed
-    let decodedHash = transaction_hash;
-    try {
-      if (transaction_hash.includes('+') || transaction_hash.includes('/')) {
-        decodedHash = atob(transaction_hash);
-      }
-    } catch (e) {
-      console.log('Hash is not base64 encoded, using as is');
-    }
+    // Format transaction hash - remove any Base64 URL-safe characters
+    const formattedHash = transaction_hash.replace(/-/g, '+').replace(/_/g, '/');
+    console.log('Formatted transaction hash:', formattedHash);
 
     // Add a retry mechanism with delay
     let attempts = 0;
@@ -39,32 +33,37 @@ serve(async (req) => {
     
     while (attempts < maxAttempts) {
       try {
-        console.log(`Attempt ${attempts + 1} to verify transaction with hash:`, decodedHash);
+        console.log(`Attempt ${attempts + 1} to verify transaction`);
         
-        const tonApiUrl = `https://tonapi.io/v2/blockchain/transactions/${decodedHash}`;
+        const tonApiUrl = `https://tonapi.io/v2/blockchain/transactions/${formattedHash}`;
         console.log('Making request to:', tonApiUrl);
         
         const tonApiResponse = await fetch(tonApiUrl, {
           headers: {
             'Authorization': `Bearer ${tonApiKey}`,
+            'Accept': 'application/json',
             'Content-Type': 'application/json',
           },
         });
 
         console.log('TonAPI response status:', tonApiResponse.status);
-        const responseText = await tonApiResponse.text();
-        console.log('TonAPI response body:', responseText);
-
-        if (tonApiResponse.status === 404) {
-          console.log('Transaction not found yet, waiting...');
-          await sleep(2000); // Wait 2 seconds before retry
-          attempts++;
-          continue;
-        }
-
+        
         if (!tonApiResponse.ok) {
-          throw new Error(`TonAPI error: ${tonApiResponse.statusText}. Response: ${responseText}`);
+          const errorText = await tonApiResponse.text();
+          console.error('TonAPI error response:', errorText);
+          
+          if (tonApiResponse.status === 404) {
+            console.log('Transaction not found yet, will retry...');
+            await sleep(2000); // Wait 2 seconds before retry
+            attempts++;
+            continue;
+          }
+          
+          throw new Error(`TonAPI returned ${tonApiResponse.status}: ${errorText}`);
         }
+
+        const responseText = await tonApiResponse.text();
+        console.log('TonAPI response:', responseText);
 
         const transactionData = JSON.parse(responseText);
         console.log('Parsed transaction data:', transactionData);
@@ -82,6 +81,7 @@ serve(async (req) => {
           .eq('transaction_hash', transaction_hash);
 
         if (updateError) {
+          console.error('Error updating transaction:', updateError);
           throw updateError;
         }
 
