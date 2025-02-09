@@ -18,13 +18,12 @@ serve(async (req) => {
 
   try {
     const { transaction_hash } = await req.json();
-    
-    // Remove 'te6c' prefix if present
-    const cleanHash = transaction_hash.replace(/^te6c/, '');
-    console.log('🔍 Using clean hash:', cleanHash);
+    console.log('🔍 Verifying transaction:', transaction_hash);
 
+    // Initialize Supabase client
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // Check if transaction is already confirmed
     const { data: existingTransaction } = await supabase
       .from('transactions')
       .select('status')
@@ -38,8 +37,9 @@ serve(async (req) => {
       );
     }
 
+    // Call TON API to check transaction status
     const tonApiResponse = await fetch(
-      `https://tonapi.io/v2/blockchain/transactions/${cleanHash}`, 
+      `https://tonapi.io/v2/blockchain/transactions/${transaction_hash}`, 
       {
         headers: {
           'Authorization': `Bearer ${tonApiKey}`,
@@ -48,15 +48,18 @@ serve(async (req) => {
       }
     );
 
-    if (!tonApiResponse.ok) {
-      const errorText = await tonApiResponse.text();
-      console.error('❌ TonAPI error response:', errorText);
-      
+    // If transaction is not found yet, return pending status
+    if (tonApiResponse.status === 404) {
       return new Response(
-        JSON.stringify({ 
-          error: `TonAPI returned ${tonApiResponse.status}: ${errorText}`,
-          status: tonApiResponse.status === 404 ? 'pending' : 'error'
-        }),
+        JSON.stringify({ status: 'pending' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!tonApiResponse.ok) {
+      console.error('❌ TON API error:', await tonApiResponse.text());
+      return new Response(
+        JSON.stringify({ status: 'error', message: 'Failed to verify transaction' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -64,6 +67,7 @@ serve(async (req) => {
     const transactionData = await tonApiResponse.json();
     console.log('✅ Transaction data:', transactionData);
 
+    // Update transaction status in database
     const status = transactionData.status === 'success' ? 'confirmed' : 'failed';
     
     const { error: updateError } = await supabase
@@ -77,7 +81,7 @@ serve(async (req) => {
     if (updateError) {
       console.error('❌ Error updating transaction:', updateError);
       return new Response(
-        JSON.stringify({ error: updateError.message, status: 'error' }),
+        JSON.stringify({ status: 'error', message: 'Failed to update transaction' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -91,10 +95,11 @@ serve(async (req) => {
     console.error('❌ Error:', error);
     return new Response(
       JSON.stringify({ 
-        error: error.message,
-        status: 'error'
+        status: 'error',
+        message: error.message 
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
+

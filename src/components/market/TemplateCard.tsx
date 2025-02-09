@@ -21,17 +21,14 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
 
   const verifyTransaction = async (transactionHash: string) => {
     try {
-      console.log("🔍 Verifying transaction:", transactionHash);
       const { data, error } = await supabase.functions.invoke('verify-transaction', {
         body: { transaction_hash: transactionHash }
       });
 
       if (error) throw error;
-      if (data.error) throw new Error(data.error);
-      
       return data.status;
     } catch (error) {
-      console.error("❌ Verification error:", error);
+      console.error('❌ Verification error:', error);
       throw error;
     }
   };
@@ -77,9 +74,11 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
         description: "Waiting for confirmation...",
       });
 
-      // Simple verification with 5 retries
+      // Check transaction status with retries
       let attempts = 0;
-      const maxAttempts = 5;
+      const maxAttempts = 20;
+      const interval = 2000; // 2 seconds
+
       const checkTransaction = async () => {
         if (attempts >= maxAttempts) {
           toast({
@@ -92,7 +91,6 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
 
         try {
           const status = await verifyTransaction(result.boc);
-          console.log(`📡 Verification attempt ${attempts + 1}, status:`, status);
           
           if (status === 'confirmed') {
             toast({
@@ -109,13 +107,13 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
             return;
           }
           
-          // If pending or error, retry after delay
+          // If pending, retry after delay
           attempts++;
-          setTimeout(checkTransaction, 2000);
+          setTimeout(checkTransaction, interval);
         } catch (error) {
           console.error("❌ Verification attempt failed:", error);
           attempts++;
-          setTimeout(checkTransaction, 2000);
+          setTimeout(checkTransaction, interval);
         }
       };
 
@@ -187,3 +185,4 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
     </motion.div>
   );
 };
+
