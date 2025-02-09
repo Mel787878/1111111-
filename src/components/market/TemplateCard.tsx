@@ -19,9 +19,9 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
 
-  const verifyTransaction = async (transactionHash: string): Promise<string> => {
+  const verifyTransaction = async (boc: string): Promise<string> => {
     const { data, error } = await supabase.functions.invoke('verify-transaction', {
-      body: { transaction_hash: transactionHash }
+      body: { boc }
     });
 
     if (error) throw error;
@@ -53,11 +53,11 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
       const result = await tonConnectUI.sendTransaction(transaction);
       console.log("✅ Transaction sent:", result);
 
-      // Save transaction to database using the boc field since it contains the transaction hash
+      // Save transaction to database using the boc field
       const { error: insertError } = await supabase
         .from('transactions')
         .insert({
-          transaction_hash: result.boc, // Using boc as the transaction hash
+          transaction_hash: result.boc,
           user_wallet: wallet.account.address,
           template_id: template.id,
           amount: template.price,
