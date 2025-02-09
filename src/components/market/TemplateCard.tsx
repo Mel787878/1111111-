@@ -19,6 +19,33 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
 
+  const verifyTransaction = async (transactionHash: string) => {
+    try {
+      console.log("🔍 Verifying transaction:", transactionHash);
+      const response = await fetch("/functions/v1/verify-transaction", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${process.env.SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ transaction_hash: transactionHash }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error("❌ Verification API error:", errorData);
+        throw new Error(`Verification failed: ${errorData}`);
+      }
+
+      const data = await response.json();
+      console.log("✅ Verification response:", data);
+      return data.status;
+    } catch (error) {
+      console.error("❌ Verification error:", error);
+      throw error;
+    }
+  };
+
   const handlePurchase = async () => {
     try {
       if (!wallet) {
@@ -63,36 +90,51 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
         description: "Your transaction is being processed. We'll notify you once it's confirmed.",
       });
 
-      // Poll for transaction status
-      const checkTransactionStatus = async () => {
-        const { data, error } = await supabase
-          .from('transactions')
-          .select('status')
-          .eq('transaction_hash', result.boc)
-          .single();
+      // Start verification process with retries
+      let attempts = 0;
+      const maxAttempts = 10;
+      const verificationInterval = setInterval(async () => {
+        try {
+          if (attempts >= maxAttempts) {
+            clearInterval(verificationInterval);
+            console.log("❌ Max verification attempts reached");
+            toast({
+              title: "Verification timeout",
+              description: "Please check your wallet for transaction status.",
+              variant: "destructive",
+            });
+            return;
+          }
 
-        if (error) {
-          console.error("Error checking transaction status:", error);
-          return;
+          console.log(`🔄 Verification attempt ${attempts + 1} of ${maxAttempts}`);
+          const status = await verifyTransaction(result.boc);
+          
+          if (status === 'confirmed') {
+            clearInterval(verificationInterval);
+            toast({
+              title: "Purchase successful",
+              description: "Your template purchase was confirmed!",
+            });
+          } else if (status === 'failed') {
+            clearInterval(verificationInterval);
+            toast({
+              title: "Purchase failed",
+              description: "Your transaction failed to process.",
+              variant: "destructive",
+            });
+          }
+          
+          attempts++;
+        } catch (error) {
+          console.error(`❌ Verification attempt ${attempts + 1} failed:`, error);
+          attempts++;
         }
+      }, 3000); // Check every 3 seconds
 
-        if (data.status === 'confirmed') {
-          toast({
-            title: "Purchase successful",
-            description: "Your template purchase was confirmed!",
-          });
-        } else if (data.status === 'failed') {
-          toast({
-            title: "Purchase failed",
-            description: "Your transaction failed to process.",
-            variant: "destructive",
-          });
-        } else {
-          setTimeout(checkTransactionStatus, 5000);
-        }
-      };
-
-      setTimeout(checkTransactionStatus, 5000);
+      // Cleanup interval after 5 minutes
+      setTimeout(() => {
+        clearInterval(verificationInterval);
+      }, 300000);
 
     } catch (error: any) {
       console.error("❌ Transaction error:", error);
