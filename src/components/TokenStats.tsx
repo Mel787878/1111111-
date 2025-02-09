@@ -62,7 +62,7 @@ const TokenStatsComponent = () => {
           >
             <Coins className="w-12 h-12 mb-4 text-primary group-hover:scale-110 transition-transform duration-300" />
             <h3 className="text-2xl font-semibold text-gray-300 mb-2">Total Supply</h3>
-            <p className="text-4xl font-bold text-gradient">1,000,000,000</p>
+            <p className="text-4xl font-bold text-gradient">One Billion</p>
           </motion.div>
         </motion.div>
       </div>
