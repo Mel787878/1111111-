@@ -14,6 +14,7 @@ const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 serve(async (req) => {
+  // Handle CORS
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -22,9 +23,26 @@ serve(async (req) => {
     const { transaction_hash } = await req.json();
     console.log('🔍 Received transaction hash:', transaction_hash);
 
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Check if transaction was already processed
+    const { data: existingTransaction } = await supabase
+      .from('transactions')
+      .select('status')
+      .eq('transaction_hash', transaction_hash)
+      .single();
+
+    if (existingTransaction?.status === 'confirmed') {
+      console.log('✅ Transaction already confirmed');
+      return new Response(
+        JSON.stringify({ status: 'confirmed' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     let attempts = 0;
-    const maxAttempts = 15; // Increased max attempts
-    const initialDelay = 3000; // Initial delay of 3 seconds
+    const maxAttempts = 20; // Increased max attempts
+    const initialDelay = 2000; // Initial delay of 2 seconds
     
     while (attempts < maxAttempts) {
       try {
@@ -48,8 +66,7 @@ serve(async (req) => {
           
           if (tonApiResponse.status === 404) {
             console.log('⏳ Transaction not found yet, will retry...');
-            // Exponential backoff with initial delay
-            await sleep(initialDelay * Math.pow(2, attempts));
+            await sleep(initialDelay);
             attempts++;
             continue;
           }
@@ -60,34 +77,8 @@ serve(async (req) => {
         const transactionData = await tonApiResponse.json();
         console.log('✅ Transaction data:', transactionData);
 
-        // Check if transaction is actually finalized
-        if (!transactionData.lt) {
-          console.log('⏳ Transaction not finalized yet, will retry...');
-          await sleep(initialDelay * Math.pow(2, attempts));
-          attempts++;
-          continue;
-        }
-
-        const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-        // Check if transaction was already processed
-        const { data: existingTransaction } = await supabase
-          .from('transactions')
-          .select('status')
-          .eq('transaction_hash', transaction_hash)
-          .single();
-
-        if (existingTransaction?.status === 'confirmed') {
-          console.log('✅ Transaction already confirmed');
-          return new Response(
-            JSON.stringify({ status: 'confirmed' }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-
+        // Update transaction status in database
         const status = transactionData.status === 'success' ? 'confirmed' : 'failed';
-        console.log('📝 Setting transaction status to:', status);
-
         const { error: updateError } = await supabase
           .from('transactions')
           .update({ 
@@ -107,24 +98,37 @@ serve(async (req) => {
         );
 
       } catch (error) {
+        console.error(`❌ Attempt ${attempts + 1} failed:`, error);
         if (attempts === maxAttempts - 1) {
           throw error;
         }
-        console.log(`❌ Attempt ${attempts + 1} failed:`, error);
-        await sleep(initialDelay * Math.pow(2, attempts));
+        await sleep(initialDelay);
         attempts++;
       }
     }
 
-    throw new Error('Max verification attempts reached');
+    // If we reach here, we've exhausted all attempts
+    return new Response(
+      JSON.stringify({ 
+        error: 'Max verification attempts reached',
+        status: 'pending' 
+      }),
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200 // Return 200 instead of 500 for max attempts
+      }
+    );
 
   } catch (error) {
     console.error('❌ Error verifying transaction:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message,
+        status: 'error'
+      }),
       { 
-        status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200 // Return 200 instead of 500 for errors
       }
     );
   }
