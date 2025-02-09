@@ -7,6 +7,7 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { useTonConnectUI, useTonWallet } from "@tonconnect/ui-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import type { SendTransactionRequest } from '@tonconnect/sdk';
 
 interface TemplateCardProps {
   template: Template;
@@ -17,21 +18,6 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
   const [tonConnectUI] = useTonConnectUI();
   const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
-
-  // Configure TonConnect UI options on component mount
-  useEffect(() => {
-    tonConnectUI.setOptions({
-      manifestUrl: 'https://lovable.dev/projects/96a96d3e-c9dc-45ae-b635-36c1f5745957/tonconnect-manifest.json',
-      buttonRootId: 'ton-connect-button',
-      language: 'en',
-      uiPreferences: {
-        theme: 'DARK'
-      },
-      actionsConfiguration: {
-        twaReturnUrl: 'https://lovable.dev/projects/96a96d3e-c9dc-45ae-b635-36c1f5745957'
-      }
-    });
-  }, [tonConnectUI]);
 
   const handlePurchase = async () => {
     if (!wallet) {
@@ -53,22 +39,17 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
     try {
       const priceInNanoTons = Math.floor(template.price * 1000000000);
       
-      // Prepare transaction in accordance with TON Connect specification
-      const transaction = {
-        validUntil: Math.floor(Date.now() / 1000) + 300, // 5 minutes from now
+      // Define transaction according to correct SendTransactionRequest type
+      const transaction: SendTransactionRequest = {
+        validUntil: Math.floor(Date.now() / 1000) + 300,
         messages: [
           {
             address: "UQCt1L-jsQiZ_lpT-PVYVwUVb-rHDuJd-bCN6GdZbL1_qznC",
             amount: priceInNanoTons.toString(),
-            payload: "", // Optional payload for the transaction
-            stateInit: null // Optional state init for the transaction
+            payload: "", // Optional payload
+            stateInit: null // Optional state init
           }
-        ],
-        network: {
-          type: "ton",
-          name: "mainnet", // or "testnet" depending on your needs
-          endpoint: "https://toncenter.com/api/v2/jsonRPC" // Optional RPC endpoint
-        }
+        ]
       };
 
       console.log("Initiating transaction:", transaction);
@@ -77,7 +58,6 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
       const result = await tonConnectUI.sendTransaction(transaction);
       console.log("✅ Transaction completed:", result);
       
-      // Show success notification
       toast({
         title: "Purchase successful",
         description: `Template "${template.name}" purchased successfully!`,
@@ -86,7 +66,6 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
     } catch (error: any) {
       console.error("❌ Transaction failed:", error);
       
-      // Enhanced error handling with specific error messages
       let errorMessage = "Failed to complete the purchase";
       if (error.message?.includes("rejected")) {
         errorMessage = "Transaction was rejected by user";
