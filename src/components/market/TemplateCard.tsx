@@ -7,6 +7,7 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { useTonConnectUI, useTonWallet } from "@tonconnect/ui-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface TemplateCardProps {
   template: Template;
@@ -29,10 +30,10 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
       const priceInNanoTons = Math.floor(template.price * 1_000_000_000).toString();
 
       const transaction = {
-        validUntil: Math.floor(Date.now() / 1000) + 300, // 5 минут
+        validUntil: Math.floor(Date.now() / 1000) + 300,
         messages: [
           {
-            address: "UQCt1L-jsQiZ_lpT-PVYVwUVb-rHDuJd-bCN6GdZbL1_qznC", // Адрес получателя
+            address: "UQCt1L-jsQiZ_lpT-PVYVwUVb-rHDuJd-bCN6GdZbL1_qznC",
             amount: priceInNanoTons,
           },
         ],
@@ -42,10 +43,64 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
       const result = await tonConnectUI.sendTransaction(transaction);
       console.log("✅ Transaction result:", result);
 
-      toast({
-        title: "Purchase successful",
-        description: "Your template purchase was successful!",
+      // Store transaction in Supabase
+      const { error: insertError } = await supabase
+        .from('transactions')
+        .insert({
+          transaction_hash: result.boc,
+          user_wallet: wallet.account.address,
+          template_id: template.id,
+          amount: template.price,
+          status: 'pending'
+        });
+
+      if (insertError) throw insertError;
+
+      // Start verification process
+      const { error: verificationError } = await supabase.functions.invoke('verify-transaction', {
+        body: { transaction_hash: result.boc }
       });
+
+      if (verificationError) throw verificationError;
+
+      toast({
+        title: "Purchase initiated",
+        description: "Your transaction is being processed. We'll notify you once it's confirmed.",
+      });
+
+      // Poll for transaction status
+      const checkTransactionStatus = async () => {
+        const { data, error } = await supabase
+          .from('transactions')
+          .select('status')
+          .eq('transaction_hash', result.boc)
+          .single();
+
+        if (error) {
+          console.error("Error checking transaction status:", error);
+          return;
+        }
+
+        if (data.status === 'confirmed') {
+          toast({
+            title: "Purchase successful",
+            description: "Your template purchase was confirmed!",
+          });
+        } else if (data.status === 'failed') {
+          toast({
+            title: "Purchase failed",
+            description: "Your transaction failed to process.",
+            variant: "destructive",
+          });
+        } else {
+          // If still pending, check again in 5 seconds
+          setTimeout(checkTransactionStatus, 5000);
+        }
+      };
+
+      // Start polling
+      setTimeout(checkTransactionStatus, 5000);
+
     } catch (error: any) {
       console.error("❌ Transaction error:", error);
       toast({
