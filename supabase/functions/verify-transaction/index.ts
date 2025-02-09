@@ -17,15 +17,15 @@ serve(async (req) => {
   }
 
   try {
-    const { boc } = await req.json();
-    console.log('🔍 Starting verification for BOC:', boc);
+    const { transaction_hash } = await req.json();
+    console.log('🔍 Starting verification for transaction:', transaction_hash);
     
-    if (!boc) {
-      console.error('❌ No BOC provided');
+    if (!transaction_hash) {
+      console.error('❌ No transaction hash provided');
       return new Response(
         JSON.stringify({ 
           status: 'error',
-          message: 'BOC is required'
+          message: 'Transaction hash is required'
         }),
         { 
           status: 400,
@@ -34,12 +34,12 @@ serve(async (req) => {
       );
     }
 
-    // Parse message from the BOC
-    console.log('📡 Getting transaction data from BOC...');
+    // First get the message hash from the boc
+    console.log('📡 Getting message hash from BOC...');
     let messageResponse;
     try {
       messageResponse = await fetch(
-        'https://tonapi.io/v2/blockchain/parse/message', 
+        'https://tonapi.io/v2/blockchain/message',
         {
           method: 'POST',
           headers: {
@@ -47,15 +47,17 @@ serve(async (req) => {
             'Accept': 'application/json',
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ boc })
+          body: JSON.stringify({
+            boc: transaction_hash
+          })
         }
       );
-    } catch (fetchError) {
-      console.error('❌ Failed to parse message from TON API:', fetchError);
+    } catch (error) {
+      console.error('❌ Failed to get message hash:', error);
       return new Response(
         JSON.stringify({ 
           status: 'error',
-          message: 'Failed to connect to TON API'
+          message: 'Failed to get message hash'
         }),
         { 
           status: 503,
@@ -65,11 +67,11 @@ serve(async (req) => {
     }
 
     if (!messageResponse.ok) {
-      console.error('❌ TON API message error:', messageResponse.status);
+      console.error('❌ Message API error:', messageResponse.status);
       return new Response(
         JSON.stringify({ 
           status: 'error',
-          message: 'Failed to parse message from BOC'
+          message: 'Message API error'
         }),
         { 
           status: messageResponse.status,
@@ -78,18 +80,16 @@ serve(async (req) => {
       );
     }
 
-    const parsedMessage = await messageResponse.json();
-    console.log('✅ Parsed message:', parsedMessage);
+    const messageData = await messageResponse.json();
+    const hash = messageData.hash;
+    console.log('✅ Got message hash:', hash);
 
-    // Wait for the transaction to propagate
-    await new Promise(resolve => setTimeout(resolve, 5000));
-
-    // Get transactions for the source account
-    console.log('📡 Finding transaction...');
-    let txResponse;
+    // Now check transaction status using the hash
+    console.log('📡 Checking transaction status...');
+    let response;
     try {
-      txResponse = await fetch(
-        `https://tonapi.io/v2/blockchain/accounts/${parsedMessage.source}/transactions`, 
+      response = await fetch(
+        `https://tonapi.io/v2/blockchain/transactions/${hash}`, 
         {
           headers: {
             'Authorization': `Bearer ${tonApiKey}`,
@@ -111,10 +111,11 @@ serve(async (req) => {
       );
     }
 
-    const txData = await txResponse.json();
-    console.log('📝 Transactions:', txData);
+    const responseText = await response.text();
+    console.log(`📝 TON API response (${response.status}):`, responseText);
 
-    if (!txResponse.ok || !txData.transactions || txData.transactions.length === 0) {
+    // Handle different response scenarios
+    if (response.status === 404) {
       console.log('⏳ Transaction not found yet, marking as pending');
       return new Response(
         JSON.stringify({ status: 'pending' }),
@@ -122,27 +123,45 @@ serve(async (req) => {
       );
     }
 
-    // Find the matching transaction by comparing destination and value
-    const transaction = txData.transactions.find(tx => 
-      tx.out_msgs.some(msg => 
-        msg.destination === parsedMessage.destination && 
-        msg.value === parsedMessage.value
-      )
-    );
-
-    if (!transaction) {
-      console.log('⏳ Matching transaction not found yet, marking as pending');
+    if (!response.ok) {
+      console.error('❌ TON API error:', response.status, responseText);
       return new Response(
-        JSON.stringify({ status: 'pending' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ 
+          status: 'error',
+          message: 'TON API error',
+          details: responseText
+        }),
+        { 
+          status: response.status,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
       );
     }
 
-    // Update transaction status in database
+    // Parse successful response
+    let transactionData;
+    try {
+      transactionData = JSON.parse(responseText);
+      console.log('✅ Parsed transaction data:', transactionData);
+    } catch (parseError) {
+      console.error('❌ Failed to parse TON API response:', parseError);
+      return new Response(
+        JSON.stringify({ 
+          status: 'error',
+          message: 'Invalid response from TON API'
+        }),
+        { 
+          status: 502,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    // Initialize Supabase client and update transaction status
     console.log('🔄 Updating transaction status in database...');
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    const status = transaction.success ? 'confirmed' : 'failed';
+    const status = transactionData.status === 'success' ? 'confirmed' : 'failed';
     
     const { error: updateError } = await supabase
       .from('transactions')
@@ -150,7 +169,7 @@ serve(async (req) => {
         status,
         updated_at: new Date().toISOString()
       })
-      .eq('transaction_hash', boc);
+      .eq('transaction_hash', transaction_hash);
 
     if (updateError) {
       console.error('❌ Database update error:', updateError);
@@ -168,6 +187,7 @@ serve(async (req) => {
 
     console.log('✅ Successfully updated transaction status to:', status);
     
+    // Return final status
     return new Response(
       JSON.stringify({ status }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

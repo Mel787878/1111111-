@@ -1,4 +1,3 @@
-
 import { motion } from "framer-motion";
 import { StarIcon } from "lucide-react";
 import { Template } from "@/types/template";
@@ -19,9 +18,9 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
 
-  const verifyTransaction = async (boc: string): Promise<string> => {
+  const verifyTransaction = async (transactionHash: string): Promise<string> => {
     const { data, error } = await supabase.functions.invoke('verify-transaction', {
-      body: { boc }
+      body: { transaction_hash: transactionHash }
     });
 
     if (error) throw error;
@@ -36,13 +35,11 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
       }
 
       setIsProcessing(true);
-      
-      // Convert price to nanoTONs
       const priceInNanoTons = Math.floor(template.price * 1_000_000_000).toString();
 
-      // Create transaction payload
+      // Prepare transaction
       const transaction = {
-        validUntil: Math.floor(Date.now() / 1000) + 300, // 5 minutes
+        validUntil: Math.floor(Date.now() / 1000) + 300,
         messages: [
           {
             address: "UQCt1L-jsQiZ_lpT-PVYVwUVb-rHDuJd-bCN6GdZbL1_qznC",
@@ -55,7 +52,7 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
       const result = await tonConnectUI.sendTransaction(transaction);
       console.log("✅ Transaction sent:", result);
 
-      // Store transaction in database
+      // Save transaction to database using the boc field
       const { error: insertError } = await supabase
         .from('transactions')
         .insert({
@@ -69,20 +66,20 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
       if (insertError) throw insertError;
 
       toast({
-        title: "Транзакция отправлена",
-        description: "Ожидание подтверждения...",
+        title: "Transaction sent",
+        description: "Waiting for confirmation...",
       });
 
-      // Poll for transaction status
+      // Check transaction status with retries
       let attempts = 0;
       const maxAttempts = 20;
-      const interval = 5000; // 5 seconds
+      const interval = 2000; // 2 seconds
 
       const checkStatus = async () => {
         if (attempts >= maxAttempts) {
           toast({
-            title: "Время ожидания истекло",
-            description: "Пожалуйста, проверьте статус в вашем кошельке",
+            title: "Verification timeout",
+            description: "Please check your wallet for the final status",
             variant: "destructive",
           });
           setIsProcessing(false);
@@ -94,8 +91,8 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
           
           if (status === 'confirmed') {
             toast({
-              title: "Покупка успешна!",
-              description: "Транзакция подтверждена",
+              title: "Purchase successful!",
+              description: "Your transaction has been confirmed",
             });
             setIsProcessing(false);
             return;
@@ -103,8 +100,8 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
           
           if (status === 'failed') {
             toast({
-              title: "Ошибка покупки",
-              description: "Не удалось обработать транзакцию",
+              title: "Purchase failed",
+              description: "The transaction failed to process",
               variant: "destructive",
             });
             setIsProcessing(false);
@@ -122,14 +119,14 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
         }
       };
 
-      // Start verification after initial delay
-      setTimeout(checkStatus, 5000);
+      // Start verification process
+      checkStatus();
 
     } catch (error) {
       console.error("❌ Transaction error:", error);
       toast({
-        title: "Ошибка транзакции",
-        description: error.message || "Не удалось завершить покупку",
+        title: "Transaction failed",
+        description: error.message || "Failed to complete the purchase",
         variant: "destructive",
       });
       setIsProcessing(false);
@@ -181,7 +178,7 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
               onClick={handlePurchase}
               disabled={isProcessing}
             >
-              {isProcessing ? "Обработка..." : wallet ? "Купить" : "Подключить кошелек"}
+              {isProcessing ? "Processing..." : wallet ? "Purchase" : "Connect Wallet"}
             </Button>
           </div>
         </CardFooter>
