@@ -18,9 +18,21 @@ serve(async (req) => {
 
   try {
     const { transaction_hash } = await req.json();
-    console.log('🔍 Verifying transaction:', transaction_hash);
+    console.log('🔍 Starting verification for transaction:', transaction_hash);
     
+    if (!transaction_hash) {
+      console.error('❌ No transaction hash provided');
+      return new Response(
+        JSON.stringify({ 
+          status: 'error',
+          message: 'Transaction hash is required'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Call TON API to check transaction status
+    console.log('📡 Calling TON API...');
     const response = await fetch(
       `https://tonapi.io/v2/blockchain/transactions/${transaction_hash}`, 
       {
@@ -31,12 +43,12 @@ serve(async (req) => {
       }
     );
 
-    const responseData = await response.text();
-    console.log('📝 TON API response:', responseData);
+    const responseText = await response.text();
+    console.log(`📝 TON API response (${response.status}):`, responseText);
 
     // Handle different response scenarios
     if (response.status === 404) {
-      console.log('⏳ Transaction not found yet');
+      console.log('⏳ Transaction not found yet, marking as pending');
       return new Response(
         JSON.stringify({ status: 'pending' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -44,21 +56,35 @@ serve(async (req) => {
     }
 
     if (!response.ok) {
-      console.error('❌ TON API error:', responseData);
+      console.error('❌ TON API error:', response.status, responseText);
       return new Response(
         JSON.stringify({ 
           status: 'error',
-          message: `TON API error: ${response.status}`
+          message: `TON API error: ${response.status}`,
+          details: responseText
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     // Parse successful response
-    const transactionData = JSON.parse(responseData);
-    console.log('✅ Transaction data:', transactionData);
+    let transactionData;
+    try {
+      transactionData = JSON.parse(responseText);
+      console.log('✅ Parsed transaction data:', transactionData);
+    } catch (parseError) {
+      console.error('❌ Failed to parse TON API response:', parseError);
+      return new Response(
+        JSON.stringify({ 
+          status: 'error',
+          message: 'Failed to parse transaction data'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Initialize Supabase client
+    console.log('🔄 Updating transaction status in database...');
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
     // Update transaction status in database
@@ -73,7 +99,7 @@ serve(async (req) => {
       .eq('transaction_hash', transaction_hash);
 
     if (updateError) {
-      console.error('❌ DB update error:', updateError);
+      console.error('❌ Database update error:', updateError);
       return new Response(
         JSON.stringify({ 
           status: 'error',
@@ -83,6 +109,8 @@ serve(async (req) => {
       );
     }
 
+    console.log('✅ Successfully updated transaction status to:', status);
+    
     // Return final status
     return new Response(
       JSON.stringify({ status }),
@@ -94,7 +122,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         status: 'error',
-        message: error.message 
+        message: error.message || 'An unexpected error occurred'
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
