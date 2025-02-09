@@ -7,12 +7,9 @@ const corsHeaders = {
 }
 
 interface WebhookPayload {
-  event_id: string
   account_id: string
-  tx: {
-    hash: string
-    status: 'pending' | 'confirmed' | 'failed'
-  }
+  lt: number
+  tx_hash: string
 }
 
 Deno.serve(async (req) => {
@@ -49,14 +46,33 @@ Deno.serve(async (req) => {
     // Initialize Supabase client
     const supabase = createClient(supabaseUrl, supabaseKey)
 
+    // Query transaction status from TON API
+    const tonApiResponse = await fetch(
+      `https://tonapi.io/v2/blockchain/transactions/${payload.tx_hash}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${tonApiKey}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    )
+
+    if (!tonApiResponse.ok) {
+      throw new Error(`Error fetching transaction status: ${tonApiResponse.statusText}`)
+    }
+
+    const transactionData = await tonApiResponse.json()
+    console.log('Transaction data from TON API:', transactionData)
+
     // Update transaction status in database
+    const status = transactionData.status === 'success' ? 'confirmed' : 'failed'
     const { data, error } = await supabase
       .from('transactions')
       .update({ 
-        status: payload.tx.status,
+        status,
         updated_at: new Date().toISOString()
       })
-      .eq('transaction_hash', payload.tx.hash)
+      .eq('transaction_hash', payload.tx_hash)
       .select()
       .single()
 
