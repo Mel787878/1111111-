@@ -12,7 +12,7 @@ import { CryptoMarket } from "./components/CryptoMarket";
 const queryClient = new QueryClient();
 
 // Using absolute URL for manifest
-const manifestUrl = 'https://lovable.dev/projects/96a96d3e-c9dc-45ae-b635-36c1f5745957/tonconnect-manifest.json';
+const manifestUrl = 'https://binkecoin.com/tonconnect-manifest.json';
 
 const App = () => {
   return (
