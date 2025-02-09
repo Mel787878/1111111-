@@ -1,4 +1,3 @@
-
 import { motion } from "framer-motion";
 import { StarIcon } from "lucide-react";
 import { Template } from "@/types/template";
@@ -24,25 +23,16 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
 
   const verifyTransaction = async (tx: { boc: string }): Promise<string> => {
     try {
-      // Parse the transaction using the correct method
-      const message = await tonApi.blockchain.decodeBoc({ boc: tx.boc });
+      const blockInfo = await tonApi.blockchain.getBlockchainBlock(tx.boc);
       
-      // Wait for transaction propagation
       await new Promise(resolve => setTimeout(resolve, 5000));
       
-      // Get the transaction status using the correct method
-      const addr = Address.parse(message.destination);
-      const events = await tonApi.blockchain.getAccountEvents({ 
-        account: addr.toString(),
-        limit: 10 
-      });
+      const addr = Address.parse(blockInfo.block.master.address);
+      const txs = await tonApi.blockchain.getBlockchainBlock(addr.toString());
       
-      // Find the matching transaction
-      const transaction = events.events.find(event => 
-        event.actions.some(action => 
-          action.target === message.destination && 
-          action.value === message.value
-        )
+      const transaction = txs.block.workchain.transactions.find(t => 
+        t.account === addr.toString() && 
+        t.hash === tx.boc
       );
 
       if (!transaction) {
@@ -65,18 +55,15 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
 
       setIsProcessing(true);
 
-      // Create transaction request using the utility
       const transaction = getJettonTransferRequest(
         template.price.toString(),
         "UQCt1L-jsQiZ_lpT-PVYVwUVb-rHDuJd-bCN6GdZbL1_qznC",
         template.price
       );
 
-      // Send transaction
       const result = await tonConnectUI.sendTransaction(transaction);
       console.log("✅ Transaction sent:", result);
 
-      // Store transaction in database
       const { error: insertError } = await supabase
         .from('transactions')
         .insert({
@@ -94,7 +81,6 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
         description: "Ожидание подтверждения...",
       });
 
-      // Poll for transaction status
       let attempts = 0;
       const maxAttempts = 12; // 1 minute total
       const interval = 5000; // 5 seconds
@@ -142,7 +128,6 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
         }
       };
 
-      // Start verification after initial delay
       setTimeout(checkStatus, 5000);
 
     } catch (error) {
