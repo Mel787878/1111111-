@@ -5,7 +5,7 @@ import { Template } from "@/types/template";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { useTonConnectUI, useTonWallet } from "@tonconnect/ui-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 
 interface TemplateCardProps {
@@ -18,43 +18,97 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
 
+  // Configure TonConnect UI options on component mount
+  useEffect(() => {
+    tonConnectUI.setOptions({
+      manifestUrl: 'https://lovable.dev/projects/96a96d3e-c9dc-45ae-b635-36c1f5745957/tonconnect-manifest.json',
+      buttonRootId: 'ton-connect-button',
+      language: 'en',
+      uiPreferences: {
+        theme: 'DARK'
+      },
+      actionsConfiguration: {
+        twaReturnUrl: 'https://lovable.dev/projects/96a96d3e-c9dc-45ae-b635-36c1f5745957'
+      }
+    });
+  }, [tonConnectUI]);
+
   const handlePurchase = async () => {
     if (!wallet) {
-      tonConnectUI.openModal();
-      return;
+      try {
+        await tonConnectUI.connectWallet();
+        return;
+      } catch (e) {
+        console.error("Failed to connect wallet:", e);
+        toast({
+          title: "Connection failed",
+          description: "Failed to connect wallet. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     setIsProcessing(true);
     try {
       const priceInNanoTons = Math.floor(template.price * 1000000000);
+      
+      // Prepare transaction in accordance with TON Connect specification
       const transaction = {
-        validUntil: Math.floor(Date.now() / 1000) + 300,
+        validUntil: Math.floor(Date.now() / 1000) + 300, // 5 minutes from now
         messages: [
           {
             address: "UQCt1L-jsQiZ_lpT-PVYVwUVb-rHDuJd-bCN6GdZbL1_qznC",
             amount: priceInNanoTons.toString(),
-          },
+            payload: "", // Optional payload for the transaction
+            stateInit: null // Optional state init for the transaction
+          }
         ],
+        network: {
+          type: "ton",
+          name: "mainnet", // or "testnet" depending on your needs
+          endpoint: "https://toncenter.com/api/v2/jsonRPC" // Optional RPC endpoint
+        }
       };
 
-      console.log("Sending transaction:", transaction);
-      const result = await tonConnectUI.sendTransaction(transaction);
-      console.log("✅ Transaction result:", result);
+      console.log("Initiating transaction:", transaction);
+      console.log("Connected wallet address:", wallet.account.address);
       
+      const result = await tonConnectUI.sendTransaction(transaction);
+      console.log("✅ Transaction completed:", result);
+      
+      // Show success notification
       toast({
         title: "Purchase successful",
-        description: "Your template purchase was successful!",
+        description: `Template "${template.name}" purchased successfully!`,
       });
+
     } catch (error: any) {
-      console.error("❌ Transaction error:", error);
+      console.error("❌ Transaction failed:", error);
+      
+      // Enhanced error handling with specific error messages
+      let errorMessage = "Failed to complete the purchase";
+      if (error.message?.includes("rejected")) {
+        errorMessage = "Transaction was rejected by user";
+      } else if (error.message?.includes("insufficient")) {
+        errorMessage = "Insufficient funds in wallet";
+      }
+      
       toast({
         title: "Transaction failed",
-        description: error.message || "Failed to complete the purchase",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  // Determine button text based on wallet and processing state
+  const getButtonText = () => {
+    if (isProcessing) return "Processing...";
+    if (!wallet) return "Connect Wallet";
+    return `Purchase for ${template.price} TON`;
   };
 
   return (
@@ -91,18 +145,23 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
               </div>
             ))}
           </div>
+          {wallet && (
+            <p className="text-sm text-gray-400 mt-4">
+              Connected: {wallet.account.address.slice(0, 6)}...{wallet.account.address.slice(-4)}
+            </p>
+          )}
         </CardContent>
         <CardFooter className="p-6 pt-0 mt-auto">
           <div className="w-full flex items-center justify-between">
             <span className="text-2xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-              ${template.price} TON
+              {template.price} TON
             </span>
             <Button 
               className="bg-gradient-to-r from-primary to-secondary hover:from-primary/90 hover:to-secondary/90 text-white"
               onClick={handlePurchase}
               disabled={isProcessing}
             >
-              {isProcessing ? "Processing..." : wallet ? "Purchase" : "Connect Wallet"}
+              {getButtonText()}
             </Button>
           </div>
         </CardFooter>
