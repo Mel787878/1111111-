@@ -1,3 +1,4 @@
+
 import { motion } from "framer-motion";
 import { StarIcon } from "lucide-react";
 import { Template } from "@/types/template";
@@ -52,11 +53,11 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
       const result = await tonConnectUI.sendTransaction(transaction);
       console.log("✅ Transaction sent:", result);
 
-      // Save transaction to database using the boc field
+      // Save transaction to database using the hash field
       const { error: insertError } = await supabase
         .from('transactions')
         .insert({
-          transaction_hash: result.boc,
+          transaction_hash: result.hash, // Используем hash вместо boc
           user_wallet: wallet.account.address,
           template_id: template.id,
           amount: template.price,
@@ -87,7 +88,7 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
         }
 
         try {
-          const status = await verifyTransaction(result.boc);
+          const status = await verifyTransaction(result.hash); // Используем hash вместо boc
           
           if (status === 'confirmed') {
             toast({
