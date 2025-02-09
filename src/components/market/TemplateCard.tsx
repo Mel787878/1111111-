@@ -25,23 +25,23 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
   const verifyTransaction = async (tx: { boc: string }): Promise<string> => {
     try {
       // Parse the transaction using the correct method
-      const message = await tonApi.blockchain.parseBoc({ boc: tx.boc });
+      const message = await tonApi.blockchain.decodeBoc({ boc: tx.boc });
       
       // Wait for transaction propagation
       await new Promise(resolve => setTimeout(resolve, 5000));
       
       // Get the transaction status using the correct method
       const addr = Address.parse(message.destination);
-      const transactions = await tonApi.blockchain.getTransactions({ 
+      const events = await tonApi.blockchain.getAccountEvents({ 
         account: addr.toString(),
         limit: 10 
       });
       
       // Find the matching transaction
-      const transaction = transactions.transactions.find(t => 
-        t.out_msgs.some(msg => 
-          msg.destination === message.destination && 
-          msg.value === message.value
+      const transaction = events.events.find(event => 
+        event.actions.some(action => 
+          action.target === message.destination && 
+          action.value === message.value
         )
       );
 
