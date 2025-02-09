@@ -36,11 +36,13 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
       }
 
       setIsProcessing(true);
+      
+      // Convert price to nanoTONs
       const priceInNanoTons = Math.floor(template.price * 1_000_000_000).toString();
 
-      // Prepare transaction
+      // Create transaction payload
       const transaction = {
-        validUntil: Math.floor(Date.now() / 1000) + 300,
+        validUntil: Math.floor(Date.now() / 1000) + 300, // 5 minutes
         messages: [
           {
             address: "UQCt1L-jsQiZ_lpT-PVYVwUVb-rHDuJd-bCN6GdZbL1_qznC",
@@ -67,20 +69,20 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
       if (insertError) throw insertError;
 
       toast({
-        title: "Transaction sent",
-        description: "Waiting for confirmation...",
+        title: "Транзакция отправлена",
+        description: "Ожидание подтверждения...",
       });
 
-      // Check transaction status with retries
+      // Poll for transaction status
       let attempts = 0;
       const maxAttempts = 20;
-      const interval = 3000; // 3 seconds
+      const interval = 5000; // 5 seconds
 
       const checkStatus = async () => {
         if (attempts >= maxAttempts) {
           toast({
-            title: "Verification timeout",
-            description: "Please check your wallet for the final status",
+            title: "Время ожидания истекло",
+            description: "Пожалуйста, проверьте статус в вашем кошельке",
             variant: "destructive",
           });
           setIsProcessing(false);
@@ -92,8 +94,8 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
           
           if (status === 'confirmed') {
             toast({
-              title: "Purchase successful!",
-              description: "Your transaction has been confirmed",
+              title: "Покупка успешна!",
+              description: "Транзакция подтверждена",
             });
             setIsProcessing(false);
             return;
@@ -101,8 +103,8 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
           
           if (status === 'failed') {
             toast({
-              title: "Purchase failed",
-              description: "The transaction failed to process",
+              title: "Ошибка покупки",
+              description: "Не удалось обработать транзакцию",
               variant: "destructive",
             });
             setIsProcessing(false);
@@ -120,14 +122,14 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
         }
       };
 
-      // Start verification process
-      setTimeout(checkStatus, 3000); // Initial delay to allow transaction to propagate
+      // Start verification after initial delay
+      setTimeout(checkStatus, 5000);
 
     } catch (error) {
       console.error("❌ Transaction error:", error);
       toast({
-        title: "Transaction failed",
-        description: error.message || "Failed to complete the purchase",
+        title: "Ошибка транзакции",
+        description: error.message || "Не удалось завершить покупку",
         variant: "destructive",
       });
       setIsProcessing(false);
@@ -179,7 +181,7 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
               onClick={handlePurchase}
               disabled={isProcessing}
             >
-              {isProcessing ? "Processing..." : wallet ? "Purchase" : "Connect Wallet"}
+              {isProcessing ? "Обработка..." : wallet ? "Купить" : "Подключить кошелек"}
             </Button>
           </div>
         </CardFooter>

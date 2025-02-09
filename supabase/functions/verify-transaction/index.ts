@@ -35,7 +35,7 @@ serve(async (req) => {
     }
 
     // Parse message from the BOC
-    console.log('📡 Getting transaction hash from BOC...');
+    console.log('📡 Getting transaction data from BOC...');
     let messageResponse;
     try {
       messageResponse = await fetch(
@@ -47,9 +47,7 @@ serve(async (req) => {
             'Accept': 'application/json',
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            boc: boc
-          })
+          body: JSON.stringify({ boc })
         }
       );
     } catch (fetchError) {
@@ -83,15 +81,15 @@ serve(async (req) => {
     const parsedMessage = await messageResponse.json();
     console.log('✅ Parsed message:', parsedMessage);
 
-    // Wait a bit for the transaction to propagate
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    // Wait for the transaction to propagate
+    await new Promise(resolve => setTimeout(resolve, 5000));
 
-    // Find transaction by source and destination
+    // Get transactions for the source account
     console.log('📡 Finding transaction...');
     let txResponse;
     try {
       txResponse = await fetch(
-        `https://tonapi.io/v2/blockchain/accounts/${parsedMessage.source}/transactions?to_lt=0`, 
+        `https://tonapi.io/v2/blockchain/accounts/${parsedMessage.source}/transactions`, 
         {
           headers: {
             'Authorization': `Bearer ${tonApiKey}`,
@@ -124,7 +122,7 @@ serve(async (req) => {
       );
     }
 
-    // Find the matching transaction
+    // Find the matching transaction by comparing destination and value
     const transaction = txData.transactions.find(tx => 
       tx.out_msgs.some(msg => 
         msg.destination === parsedMessage.destination && 
@@ -140,7 +138,7 @@ serve(async (req) => {
       );
     }
 
-    // Initialize Supabase client and update transaction status
+    // Update transaction status in database
     console.log('🔄 Updating transaction status in database...');
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
@@ -150,7 +148,6 @@ serve(async (req) => {
       .from('transactions')
       .update({ 
         status,
-        transaction_lt: transaction.lt,
         updated_at: new Date().toISOString()
       })
       .eq('transaction_hash', boc);
@@ -171,7 +168,6 @@ serve(async (req) => {
 
     console.log('✅ Successfully updated transaction status to:', status);
     
-    // Return final status
     return new Response(
       JSON.stringify({ status }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
