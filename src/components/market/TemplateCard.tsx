@@ -53,11 +53,11 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
       const result = await tonConnectUI.sendTransaction(transaction);
       console.log("✅ Transaction sent:", result);
 
-      // Save transaction to database
+      // Save transaction to database using the correct hash field
       const { error: insertError } = await supabase
         .from('transactions')
         .insert({
-          transaction_hash: result.boc,
+          transaction_hash: result.hash, // Changed from result.boc to result.hash
           user_wallet: wallet.account.address,
           template_id: template.id,
           amount: template.price,
@@ -88,7 +88,7 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
         }
 
         try {
-          const status = await verifyTransaction(result.boc);
+          const status = await verifyTransaction(result.hash); // Changed from result.boc to result.hash
           
           if (status === 'confirmed') {
             toast({
@@ -187,3 +187,4 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
     </motion.div>
   );
 };
+
