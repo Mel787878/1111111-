@@ -1,3 +1,4 @@
+
 import { motion } from "framer-motion";
 import { StarIcon } from "lucide-react";
 import { Template } from "@/types/template";
@@ -9,7 +10,6 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { getJettonTransferRequest } from "@/utils/jetton-transfer";
 import tonApi from "@/utils/ton-api";
-import { Address } from "@ton/core";
 
 interface TemplateCardProps {
   template: Template;
@@ -23,16 +23,21 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
 
   const verifyTransaction = async (tx: { boc: string }): Promise<string> => {
     try {
-      const blockInfo = await tonApi.blockchain.getBlockchainBlock(tx.boc);
+      // Parse the message from the transaction
+      const message = await tonApi.blockchain.parseMessage({ boc: tx.boc });
       
+      // Wait for transaction propagation
       await new Promise(resolve => setTimeout(resolve, 5000));
       
-      const addr = Address.parse(blockInfo.block.master.address);
-      const txs = await tonApi.blockchain.getBlockchainBlock(addr.toString());
+      // Get the transaction status
+      const transactions = await tonApi.accounts.getAccountTransactions(message.source);
       
-      const transaction = txs.block.workchain.transactions.find(t => 
-        t.account === addr.toString() && 
-        t.hash === tx.boc
+      // Find the matching transaction
+      const transaction = transactions.transactions.find(t => 
+        t.out_msgs.some(msg => 
+          msg.destination === message.destination && 
+          msg.value === message.value
+        )
       );
 
       if (!transaction) {
@@ -55,15 +60,18 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
 
       setIsProcessing(true);
 
+      // Create transaction request using the utility
       const transaction = getJettonTransferRequest(
         template.price.toString(),
         "UQCt1L-jsQiZ_lpT-PVYVwUVb-rHDuJd-bCN6GdZbL1_qznC",
         template.price
       );
 
+      // Send transaction
       const result = await tonConnectUI.sendTransaction(transaction);
       console.log("✅ Transaction sent:", result);
 
+      // Store transaction in database
       const { error: insertError } = await supabase
         .from('transactions')
         .insert({
@@ -81,6 +89,7 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
         description: "Ожидание подтверждения...",
       });
 
+      // Poll for transaction status
       let attempts = 0;
       const maxAttempts = 12; // 1 minute total
       const interval = 5000; // 5 seconds
@@ -128,6 +137,7 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
         }
       };
 
+      // Start verification after initial delay
       setTimeout(checkStatus, 5000);
 
     } catch (error) {
