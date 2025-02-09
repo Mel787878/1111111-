@@ -22,22 +22,15 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
   const verifyTransaction = async (transactionHash: string) => {
     try {
       console.log("🔍 Verifying transaction:", transactionHash);
-      const response = await fetch("/functions/v1/verify-transaction", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${process.env.SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({ transaction_hash: transactionHash }),
+      const { data, error } = await supabase.functions.invoke('verify-transaction', {
+        body: { transaction_hash: transactionHash }
       });
 
-      if (!response.ok) {
-        const errorData = await response.text();
-        console.error("❌ Verification API error:", errorData);
-        throw new Error(`Verification failed: ${errorData}`);
+      if (error) {
+        console.error("❌ Verification API error:", error);
+        throw error;
       }
 
-      const data = await response.json();
       console.log("✅ Verification response:", data);
       return data.status;
     } catch (error) {
