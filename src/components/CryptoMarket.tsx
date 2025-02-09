@@ -5,6 +5,9 @@ import { TemplateCard } from "./market/TemplateCard";
 import { SocialLinks } from "./SocialLinks";
 import { TonConnectButton } from "@tonconnect/ui-react";
 import { useTonWallet } from "@tonconnect/ui-react";
+import { Button } from "./ui/button";
+import { ArrowLeft } from "lucide-react";
+import { Link } from "react-router-dom";
 
 const mockTemplates: Template[] = [
   {
@@ -48,6 +51,18 @@ export const CryptoMarket = () => {
           transition={{ duration: 0.5 }}
           className="container mx-auto"
         >
+          <div className="mb-8">
+            <Link to="/">
+              <Button
+                variant="outline"
+                className="group hover:bg-[#9b87f5]/10 border-[#9b87f5]/20 hover:border-[#9b87f5]/40 transition-all duration-300"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2 group-hover:-translate-x-1 transition-transform" />
+                Back to Home
+              </Button>
+            </Link>
+          </div>
+
           <div className="flex justify-between items-center mb-12">
             <div>
               <h2 className="text-4xl md:text-5xl font-bold text-center bg-gradient-to-r from-[#9b87f5] via-[#D946EF] to-[#8B5CF6] bg-clip-text text-transparent">
