@@ -1,6 +1,7 @@
 
 import { z } from 'zod';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { v4 as uuidv4 } from 'uuid';
 
 // Zod schema for webhook payload validation
 const WebhookPayloadSchema = z.object({
@@ -30,23 +31,61 @@ const WebhookPayloadSchema = z.object({
   })
 });
 
-// Simple in-memory queue for webhook processing
-const webhookQueue: Array<{ payload: any, timestamp: number }> = [];
-const QUEUE_PROCESS_INTERVAL = 1000; // Process queue every second
+// Improved queue with retry mechanism
+interface QueueItem {
+  payload: any;
+  timestamp: number;
+  retryCount: number;
+  traceId: string;
+}
 
-// Process queue periodically
-setInterval(() => {
-  while (webhookQueue.length > 0) {
-    const webhook = webhookQueue.shift();
-    if (webhook) {
-      processWebhook(webhook.payload).catch(error => {
-        logEvent('error', 'Queue processing error', { error });
-      });
+const webhookQueue: QueueItem[] = [];
+const MAX_RETRIES = 3;
+const BATCH_SIZE = 5;
+const QUEUE_PROCESS_INTERVAL = 1000;
+
+// Calculate exponential backoff delay
+const getBackoffDelay = (retryCount: number): number => {
+  return Math.min(1000 * Math.pow(2, retryCount), 30000); // Max 30 seconds
+};
+
+// Process queue with parallel execution
+const processQueue = async () => {
+  if (webhookQueue.length === 0) return;
+
+  const batch = webhookQueue.splice(0, BATCH_SIZE);
+  const processPromises = batch.map(async (item) => {
+    try {
+      await processWebhook(item);
+    } catch (error) {
+      if (item.retryCount < MAX_RETRIES) {
+        const delay = getBackoffDelay(item.retryCount);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        webhookQueue.push({
+          ...item,
+          retryCount: item.retryCount + 1
+        });
+        logEvent('warning', 'Webhook processing retry scheduled', {
+          traceId: item.traceId,
+          retryCount: item.retryCount + 1,
+          delay
+        });
+      } else {
+        logEvent('error', 'Max retries reached for webhook', {
+          traceId: item.traceId,
+          error
+        });
+      }
     }
-  }
-}, QUEUE_PROCESS_INTERVAL);
+  });
 
-// Helper function for structured logging with error stack traces
+  await Promise.allSettled(processPromises);
+};
+
+// Start queue processing
+setInterval(processQueue, QUEUE_PROCESS_INTERVAL);
+
+// Enhanced logging with traceId
 const logEvent = (type: 'info' | 'error' | 'warning', message: string, data?: any) => {
   const timestamp = new Date().toISOString();
   const logData = {
@@ -59,37 +98,47 @@ const logEvent = (type: 'info' | 'error' | 'warning', message: string, data?: an
   console.log(JSON.stringify(logData, null, 2));
 };
 
-// Process individual webhook
-async function processWebhook(payload: any) {
+// Process individual webhook with improved error handling
+async function processWebhook(item: QueueItem) {
   try {
-    // Here you would implement the actual webhook processing logic
     logEvent('info', 'Processing webhook from queue', {
-      event_id: payload.event_id,
-      transaction_hash: payload.transaction.hash
+      traceId: item.traceId,
+      event_id: item.payload.event_id,
+      transaction_hash: item.payload.transaction.hash,
+      retryCount: item.retryCount
     });
     
     // Add your webhook processing logic here
     
   } catch (error) {
-    logEvent('error', 'Webhook processing error', { error });
+    logEvent('error', 'Webhook processing error', { 
+      traceId: item.traceId,
+      error,
+      retryCount: item.retryCount
+    });
     throw error;
   }
 }
 
-// Validate TON API key
+// Enhanced API key validation with multiple header support
 function validateApiKey(request: VercelRequest): boolean {
   const apiKey = process.env.TONAPI_KEY;
-  const providedKey = request.headers['x-ton-api-key'];
-  
   if (!apiKey) {
     logEvent('warning', 'TONAPI_KEY not configured in environment');
     return false;
   }
+
+  // Support both headers for flexibility
+  const providedKey = 
+    request.headers['x-ton-api-key'] || 
+    request.headers['authorization']?.replace('Bearer ', '');
   
   return apiKey === providedKey;
 }
 
 const handler = async (request: VercelRequest, response: VercelResponse) => {
+  const traceId = uuidv4();
+
   // Handle CORS preflight
   if (request.method === 'OPTIONS') {
     return response.status(200).end();
@@ -97,13 +146,16 @@ const handler = async (request: VercelRequest, response: VercelResponse) => {
 
   // Validate request method
   if (request.method !== 'POST') {
-    logEvent('error', 'Invalid method', { method: request.method });
+    logEvent('error', 'Invalid method', { 
+      traceId,
+      method: request.method 
+    });
     return response.status(405).json({ error: 'Method not allowed' });
   }
 
   // Validate API key
   if (!validateApiKey(request)) {
-    logEvent('error', 'Invalid or missing API key');
+    logEvent('error', 'Invalid or missing API key', { traceId });
     return response.status(401).json({ error: 'Invalid or missing API key' });
   }
 
@@ -111,6 +163,7 @@ const handler = async (request: VercelRequest, response: VercelResponse) => {
   const contentType = request.headers['content-type'];
   if (!contentType || !contentType.includes('application/json')) {
     logEvent('error', 'Invalid Content-Type', { 
+      traceId,
       received: contentType,
       expected: 'application/json' 
     });
@@ -120,13 +173,25 @@ const handler = async (request: VercelRequest, response: VercelResponse) => {
   }
 
   try {
-    // Ensure request body is properly parsed
-    const body = typeof request.body === 'string' 
-      ? JSON.parse(request.body) 
-      : request.body;
+    // Enhanced body parsing with flexible format support
+    let body: any;
+    if (typeof request.body === 'string') {
+      try {
+        body = JSON.parse(request.body);
+      } catch (error) {
+        logEvent('error', 'Failed to parse JSON body', { 
+          traceId,
+          error,
+          body: request.body
+        });
+        return response.status(400).json({ error: 'Invalid JSON in request body' });
+      }
+    } else {
+      body = request.body;
+    }
 
     if (!body) {
-      logEvent('error', 'Empty request body');
+      logEvent('error', 'Empty request body', { traceId });
       return response.status(400).json({ error: 'Empty request body' });
     }
 
@@ -135,6 +200,7 @@ const handler = async (request: VercelRequest, response: VercelResponse) => {
     
     if (!result.success) {
       logEvent('error', 'Invalid payload structure', { 
+        traceId,
         errors: result.error.issues,
         receivedBody: body
       });
@@ -146,14 +212,17 @@ const handler = async (request: VercelRequest, response: VercelResponse) => {
 
     const payload = result.data;
 
-    // Add to processing queue
+    // Add to processing queue with trace ID
     webhookQueue.push({
       payload,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      retryCount: 0,
+      traceId
     });
 
     // Log successful webhook receipt with detailed information
     logEvent('info', 'Webhook received and queued', {
+      traceId,
       event_id: payload.event_id,
       transaction_hash: payload.transaction.hash,
       account_address: payload.account.address,
@@ -165,12 +234,14 @@ const handler = async (request: VercelRequest, response: VercelResponse) => {
     return response.status(200).json({ 
       status: 'success',
       event_id: payload.event_id,
+      traceId,
       queued: true 
     });
 
   } catch (error) {
     // Enhanced error logging with full error details
     logEvent('error', 'Webhook processing error', { 
+      traceId,
       error: error instanceof Error ? {
         message: error.message,
         name: error.name,
