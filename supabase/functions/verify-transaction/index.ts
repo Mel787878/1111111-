@@ -23,10 +23,6 @@ serve(async (req) => {
     const { transaction_hash } = await req.json();
     console.log('Received transaction hash:', transaction_hash);
 
-    // Format transaction hash - remove any Base64 URL-safe characters
-    const formattedHash = transaction_hash.replace(/-/g, '+').replace(/_/g, '/');
-    console.log('Formatted transaction hash:', formattedHash);
-
     // Add a retry mechanism with delay
     let attempts = 0;
     const maxAttempts = 3;
@@ -35,14 +31,26 @@ serve(async (req) => {
       try {
         console.log(`Attempt ${attempts + 1} to verify transaction`);
         
-        const tonApiUrl = `https://tonapi.io/v2/blockchain/transactions/${formattedHash}`;
+        // First try to get transaction details from our database
+        const supabase = createClient(supabaseUrl, supabaseServiceKey);
+        const { data: transactionData } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('transaction_hash', transaction_hash)
+          .single();
+
+        if (!transactionData) {
+          throw new Error('Transaction not found in database');
+        }
+
+        // Get transaction status from TON API
+        const tonApiUrl = `https://tonapi.io/v2/blockchain/message/${transaction_hash}`;
         console.log('Making request to:', tonApiUrl);
         
         const tonApiResponse = await fetch(tonApiUrl, {
           headers: {
             'Authorization': `Bearer ${tonApiKey}`,
             'Accept': 'application/json',
-            'Content-Type': 'application/json',
           },
         });
 
@@ -62,17 +70,11 @@ serve(async (req) => {
           throw new Error(`TonAPI returned ${tonApiResponse.status}: ${errorText}`);
         }
 
-        const responseText = await tonApiResponse.text();
-        console.log('TonAPI response:', responseText);
-
-        const transactionData = JSON.parse(responseText);
-        console.log('Parsed transaction data:', transactionData);
-
-        // Initialize Supabase client
-        const supabase = createClient(supabaseUrl, supabaseServiceKey);
+        const responseData = await tonApiResponse.json();
+        console.log('TonAPI response data:', responseData);
 
         // Update transaction status in database
-        const status = transactionData.status === 'success' ? 'confirmed' : 'failed';
+        const status = responseData.status === 'sent' ? 'confirmed' : 'failed';
         console.log('Setting transaction status to:', status);
 
         const { error: updateError } = await supabase
@@ -92,10 +94,10 @@ serve(async (req) => {
           }
         );
       } catch (error) {
+        console.log(`Attempt ${attempts + 1} failed:`, error);
         if (attempts === maxAttempts - 1) {
           throw error;
         }
-        console.log(`Attempt ${attempts + 1} failed:`, error);
         await sleep(2000); // Wait 2 seconds before retry
         attempts++;
       }
