@@ -5,9 +5,8 @@ import { Template } from "@/types/template";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { useTonConnectUI, useTonWallet } from "@tonconnect/ui-react";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-import type { SendTransactionRequest } from '@tonconnect/sdk';
 
 interface TemplateCardProps {
   template: Template;
@@ -21,73 +20,42 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
 
   const handlePurchase = async () => {
     if (!wallet) {
-      try {
-        await tonConnectUI.connectWallet();
-        return;
-      } catch (e) {
-        console.error("Failed to connect wallet:", e);
-        toast({
-          title: "Connection failed",
-          description: "Failed to connect wallet. Please try again.",
-          variant: "destructive",
-        });
-        return;
-      }
+      tonConnectUI.openModal();
+      return;
     }
 
     setIsProcessing(true);
     try {
-      const priceInNanoTons = Math.floor(template.price * 1000000000);
-      
-      // Define transaction according to correct SendTransactionRequest type
-      const transaction: SendTransactionRequest = {
-        validUntil: Math.floor(Date.now() / 1000) + 300,
+      const priceInNanoTons = Math.floor(template.price * 1_000_000_000).toString();
+
+      const transaction = {
+        validUntil: Math.floor(Date.now() / 1000) + 300, // 5 минут
         messages: [
           {
-            address: "UQCt1L-jsQiZ_lpT-PVYVwUVb-rHDuJd-bCN6GdZbL1_qznC",
-            amount: priceInNanoTons.toString(),
-            payload: "", // Optional payload
-            stateInit: null // Optional state init
-          }
-        ]
+            address: "UQCt1L-jsQiZ_lpT-PVYVwUVb-rHDuJd-bCN6GdZbL1_qznC", // Адрес получателя
+            amount: priceInNanoTons,
+          },
+        ],
       };
 
-      console.log("Initiating transaction:", transaction);
-      console.log("Connected wallet address:", wallet.account.address);
-      
+      console.log("📤 Sending transaction:", transaction);
       const result = await tonConnectUI.sendTransaction(transaction);
-      console.log("✅ Transaction completed:", result);
-      
+      console.log("✅ Transaction result:", result);
+
       toast({
         title: "Purchase successful",
-        description: `Template "${template.name}" purchased successfully!`,
+        description: "Your template purchase was successful!",
       });
-
     } catch (error: any) {
-      console.error("❌ Transaction failed:", error);
-      
-      let errorMessage = "Failed to complete the purchase";
-      if (error.message?.includes("rejected")) {
-        errorMessage = "Transaction was rejected by user";
-      } else if (error.message?.includes("insufficient")) {
-        errorMessage = "Insufficient funds in wallet";
-      }
-      
+      console.error("❌ Transaction error:", error);
       toast({
         title: "Transaction failed",
-        description: errorMessage,
+        description: error.message || "Failed to complete the purchase",
         variant: "destructive",
       });
     } finally {
       setIsProcessing(false);
     }
-  };
-
-  // Determine button text based on wallet and processing state
-  const getButtonText = () => {
-    if (isProcessing) return "Processing...";
-    if (!wallet) return "Connect Wallet";
-    return `Purchase for ${template.price} TON`;
   };
 
   return (
@@ -124,11 +92,6 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
               </div>
             ))}
           </div>
-          {wallet && (
-            <p className="text-sm text-gray-400 mt-4">
-              Connected: {wallet.account.address.slice(0, 6)}...{wallet.account.address.slice(-4)}
-            </p>
-          )}
         </CardContent>
         <CardFooter className="p-6 pt-0 mt-auto">
           <div className="w-full flex items-center justify-between">
@@ -140,7 +103,7 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
               onClick={handlePurchase}
               disabled={isProcessing}
             >
-              {getButtonText()}
+              {isProcessing ? "Processing..." : wallet ? "Purchase" : "Connect Wallet"}
             </Button>
           </div>
         </CardFooter>
