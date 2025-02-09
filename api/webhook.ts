@@ -30,15 +30,17 @@ const WebhookPayloadSchema = z.object({
   })
 });
 
-// Helper function for structured logging
+// Helper function for structured logging with error stack traces
 const logEvent = (type: 'info' | 'error' | 'warning', message: string, data?: any) => {
   const timestamp = new Date().toISOString();
-  console.log(JSON.stringify({
+  const logData = {
     timestamp,
     type,
     message,
-    ...(data && { data })
-  }));
+    ...(data && { data }),
+    ...(data?.error?.stack && { stack: data.error.stack })
+  };
+  console.log(JSON.stringify(logData, null, 2));
 };
 
 const handler = async (request: VercelRequest, response: VercelResponse) => {
@@ -53,13 +55,31 @@ const handler = async (request: VercelRequest, response: VercelResponse) => {
     return response.status(405).json({ error: 'Method not allowed' });
   }
 
+  // Validate Content-Type header
+  const contentType = request.headers['content-type'];
+  if (!contentType || !contentType.includes('application/json')) {
+    logEvent('error', 'Invalid Content-Type', { 
+      received: contentType,
+      expected: 'application/json' 
+    });
+    return response.status(415).json({ 
+      error: 'Unsupported Media Type. Content-Type must be application/json' 
+    });
+  }
+
   try {
+    // Ensure request body is properly parsed
+    const body = typeof request.body === 'string' 
+      ? JSON.parse(request.body) 
+      : request.body;
+
     // Validate webhook payload
-    const result = WebhookPayloadSchema.safeParse(request.body);
+    const result = WebhookPayloadSchema.safeParse(body);
     
     if (!result.success) {
       logEvent('error', 'Invalid payload structure', { 
-        errors: result.error.issues 
+        errors: result.error.issues,
+        receivedBody: body
       });
       return response.status(400).json({ 
         error: 'Invalid webhook payload structure',
@@ -69,7 +89,7 @@ const handler = async (request: VercelRequest, response: VercelResponse) => {
 
     const payload = result.data;
 
-    // Log successful webhook receipt
+    // Log successful webhook receipt with detailed information
     logEvent('info', 'Webhook received', {
       event_id: payload.event_id,
       transaction_hash: payload.transaction.hash,
@@ -84,8 +104,13 @@ const handler = async (request: VercelRequest, response: VercelResponse) => {
     });
 
   } catch (error) {
+    // Enhanced error logging with full error details
     logEvent('error', 'Webhook processing error', { 
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? {
+        message: error.message,
+        name: error.name,
+        stack: error.stack
+      } : 'Unknown error'
     });
     return response.status(500).json({ error: 'Internal server error' });
   }
