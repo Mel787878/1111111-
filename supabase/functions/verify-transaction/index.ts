@@ -23,8 +23,8 @@ serve(async (req) => {
     console.log('🔍 Received transaction hash:', transaction_hash);
 
     let attempts = 0;
-    const maxAttempts = 10; // Увеличиваем количество попыток
-    const initialDelay = 3000; // Начальная задержка 3 секунды
+    const maxAttempts = 15; // Increased max attempts
+    const initialDelay = 3000; // Initial delay of 3 seconds
     
     while (attempts < maxAttempts) {
       try {
@@ -48,8 +48,8 @@ serve(async (req) => {
           
           if (tonApiResponse.status === 404) {
             console.log('⏳ Transaction not found yet, will retry...');
-            // Увеличиваем задержку с каждой попыткой
-            await sleep(initialDelay * Math.pow(1.5, attempts));
+            // Exponential backoff with initial delay
+            await sleep(initialDelay * Math.pow(2, attempts));
             attempts++;
             continue;
           }
@@ -60,15 +60,30 @@ serve(async (req) => {
         const transactionData = await tonApiResponse.json();
         console.log('✅ Transaction data:', transactionData);
 
-        // Проверяем, что транзакция действительно финализирована
+        // Check if transaction is actually finalized
         if (!transactionData.lt) {
           console.log('⏳ Transaction not finalized yet, will retry...');
-          await sleep(initialDelay * Math.pow(1.5, attempts));
+          await sleep(initialDelay * Math.pow(2, attempts));
           attempts++;
           continue;
         }
 
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+        // Check if transaction was already processed
+        const { data: existingTransaction } = await supabase
+          .from('transactions')
+          .select('status')
+          .eq('transaction_hash', transaction_hash)
+          .single();
+
+        if (existingTransaction?.status === 'confirmed') {
+          console.log('✅ Transaction already confirmed');
+          return new Response(
+            JSON.stringify({ status: 'confirmed' }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
 
         const status = transactionData.status === 'success' ? 'confirmed' : 'failed';
         console.log('📝 Setting transaction status to:', status);
@@ -88,9 +103,7 @@ serve(async (req) => {
 
         return new Response(
           JSON.stringify({ status }),
-          { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
 
       } catch (error) {
@@ -98,7 +111,7 @@ serve(async (req) => {
           throw error;
         }
         console.log(`❌ Attempt ${attempts + 1} failed:`, error);
-        await sleep(initialDelay * Math.pow(1.5, attempts));
+        await sleep(initialDelay * Math.pow(2, attempts));
         attempts++;
       }
     }

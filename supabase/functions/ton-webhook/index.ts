@@ -27,77 +27,86 @@ Deno.serve(async (req) => {
       throw new Error('Missing environment variables')
     }
 
-    // Verify TON API key from headers
-    const authHeader = req.headers.get('authorization')
-    if (!authHeader || authHeader !== `Bearer ${tonApiKey}`) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { 
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      )
-    }
-
     // Parse webhook payload
     const payload: WebhookPayload = await req.json()
-    console.log('Received webhook payload:', payload)
+    console.log('📩 Received webhook payload:', payload)
 
     // Initialize Supabase client
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    // Query transaction status from TON API
-    const tonApiResponse = await fetch(
-      `https://tonapi.io/v2/blockchain/transactions/${payload.tx_hash}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${tonApiKey}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    )
+    // Query transaction status from TON API with retries
+    let attempts = 0;
+    const maxAttempts = 3;
+    
+    while (attempts < maxAttempts) {
+      try {
+        const tonApiResponse = await fetch(
+          `https://tonapi.io/v2/blockchain/transactions/${payload.tx_hash}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${tonApiKey}`,
+              'Accept': 'application/json',
+            },
+          }
+        )
 
-    if (!tonApiResponse.ok) {
-      throw new Error(`Error fetching transaction status: ${tonApiResponse.statusText}`)
+        if (!tonApiResponse.ok) {
+          const errorText = await tonApiResponse.text()
+          console.error('❌ TonAPI error response:', errorText)
+          throw new Error(`TonAPI returned ${tonApiResponse.status}: ${errorText}`)
+        }
+
+        const transactionData = await tonApiResponse.json()
+        console.log('✅ Transaction data:', transactionData)
+
+        // Only update if transaction is finalized (has lt)
+        if (!transactionData.lt) {
+          console.log('⏳ Transaction not finalized yet, retrying...')
+          await new Promise(resolve => setTimeout(resolve, 2000))
+          attempts++
+          continue
+        }
+
+        // Update transaction status in database
+        const status = transactionData.status === 'success' ? 'confirmed' : 'failed'
+        const { error: updateError } = await supabase
+          .from('transactions')
+          .update({ 
+            status,
+            updated_at: new Date().toISOString()
+          })
+          .eq('transaction_hash', payload.tx_hash)
+
+        if (updateError) {
+          console.error('❌ Error updating transaction:', updateError)
+          throw updateError
+        }
+
+        console.log('✅ Successfully updated transaction status to:', status)
+        return new Response(
+          JSON.stringify({ success: true, status }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200
+          }
+        )
+      } catch (error) {
+        console.error(`❌ Attempt ${attempts + 1} failed:`, error)
+        if (attempts === maxAttempts - 1) throw error
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        attempts++
+      }
     }
 
-    const transactionData = await tonApiResponse.json()
-    console.log('Transaction data from TON API:', transactionData)
-
-    // Update transaction status in database
-    const status = transactionData.status === 'success' ? 'confirmed' : 'failed'
-    const { data, error } = await supabase
-      .from('transactions')
-      .update({ 
-        status,
-        updated_at: new Date().toISOString()
-      })
-      .eq('transaction_hash', payload.tx_hash)
-      .select()
-      .single()
-
-    if (error) {
-      console.error('Error updating transaction:', error)
-      throw error
-    }
-
-    console.log('Successfully updated transaction:', data)
-
-    return new Response(
-      JSON.stringify({ success: true, data }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200 
-      }
-    )
+    throw new Error('Max retry attempts reached')
 
   } catch (error) {
-    console.error('Error processing webhook:', error)
+    console.error('❌ Error processing webhook:', error)
     return new Response(
       JSON.stringify({ error: error.message }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500 
+        status: 500
       }
     )
   }
