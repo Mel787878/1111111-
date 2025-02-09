@@ -31,6 +31,11 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
         throw error;
       }
 
+      if (data.error) {
+        console.error("❌ Verification error:", data.error);
+        throw new Error(data.error);
+      }
+
       console.log("✅ Verification response:", data);
       return data.status;
     } catch (error) {
@@ -93,7 +98,7 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
             console.log("❌ Max verification attempts reached");
             toast({
               title: "Verification timeout",
-              description: "Please check your wallet for transaction status.",
+              description: "The transaction is still processing. Please check your wallet for the final status.",
               variant: "destructive",
             });
             return;
@@ -115,6 +120,9 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
               description: "Your transaction failed to process.",
               variant: "destructive",
             });
+          } else if (status === 'error') {
+            // Don't stop retrying on API errors
+            console.log("⚠️ Verification returned error status, will retry...");
           }
           
           attempts++;
@@ -122,7 +130,7 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
           console.error(`❌ Verification attempt ${attempts + 1} failed:`, error);
           attempts++;
         }
-      }, 3000); // Check every 3 seconds
+      }, 3000);
 
       // Cleanup interval after 5 minutes
       setTimeout(() => {

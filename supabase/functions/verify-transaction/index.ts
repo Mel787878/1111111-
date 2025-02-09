@@ -41,8 +41,8 @@ serve(async (req) => {
     }
 
     let attempts = 0;
-    const maxAttempts = 20; // Increased max attempts
-    const initialDelay = 2000; // Initial delay of 2 seconds
+    const maxAttempts = 20;
+    const initialDelay = 2000;
     
     while (attempts < maxAttempts) {
       try {
@@ -58,8 +58,6 @@ serve(async (req) => {
           }
         );
 
-        console.log('📊 TonAPI response status:', tonApiResponse.status);
-        
         if (!tonApiResponse.ok) {
           const errorText = await tonApiResponse.text();
           console.error('❌ TonAPI error response:', errorText);
@@ -71,7 +69,17 @@ serve(async (req) => {
             continue;
           }
           
-          throw new Error(`TonAPI returned ${tonApiResponse.status}: ${errorText}`);
+          // Return a 200 status even for API errors, with error details in the response body
+          return new Response(
+            JSON.stringify({ 
+              error: `TonAPI returned ${tonApiResponse.status}: ${errorText}`,
+              status: 'error'
+            }),
+            { 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: 200 // Changed from throwing error to returning 200 with error info
+            }
+          );
         }
 
         const transactionData = await tonApiResponse.json();
@@ -89,7 +97,16 @@ serve(async (req) => {
 
         if (updateError) {
           console.error('❌ Error updating transaction:', updateError);
-          throw updateError;
+          return new Response(
+            JSON.stringify({ 
+              error: updateError.message,
+              status: 'error'
+            }),
+            { 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: 200 // Changed from throwing error to returning 200 with error info
+            }
+          );
         }
 
         return new Response(
@@ -100,7 +117,16 @@ serve(async (req) => {
       } catch (error) {
         console.error(`❌ Attempt ${attempts + 1} failed:`, error);
         if (attempts === maxAttempts - 1) {
-          throw error;
+          return new Response(
+            JSON.stringify({ 
+              error: error.message,
+              status: 'error'
+            }),
+            { 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: 200 // Changed from throwing error to returning 200 with error info
+            }
+          );
         }
         await sleep(initialDelay);
         attempts++;
@@ -115,7 +141,7 @@ serve(async (req) => {
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200 // Return 200 instead of 500 for max attempts
+        status: 200
       }
     );
 
@@ -128,7 +154,7 @@ serve(async (req) => {
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200 // Return 200 instead of 500 for errors
+        status: 200 // Changed from throwing error to returning 200 with error info
       }
     );
   }
