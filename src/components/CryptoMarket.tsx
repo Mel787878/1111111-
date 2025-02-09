@@ -10,7 +10,7 @@ const mockTemplates: Template[] = [
   {
     id: "1",
     name: "Modern Portfolio",
-    price: 0.99,
+    price: 0.1,
     rating: 4.8,
     description: "Clean and professional portfolio template with smooth animations and responsive design.",
     features: ["Responsive Design", "Animation Effects", "Dark/Light Mode", "Contact Form"],
@@ -19,7 +19,7 @@ const mockTemplates: Template[] = [
   {
     id: "2",
     name: "Crypto Dashboard",
-    price: 0.99,
+    price: 0.1,
     rating: 4.9,
     description: "Advanced crypto dashboard template with real-time price tracking and portfolio management.",
     features: ["Live Price Updates", "Portfolio Tracker", "Transaction History", "Market Analysis"],
@@ -28,7 +28,7 @@ const mockTemplates: Template[] = [
   {
     id: "3",
     name: "Business Landing",
-    price: 0.99,
+    price: 0.1,
     rating: 4.7,
     description: "Professional landing page template perfect for businesses and startups.",
     features: ["SEO Optimized", "Fast Loading", "Custom Sections", "Newsletter Integration"],
