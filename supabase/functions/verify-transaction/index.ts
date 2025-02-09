@@ -34,12 +34,13 @@ serve(async (req) => {
       );
     }
 
-    // First, get the transaction hash from the BOC
+    // First, get the transaction hash from the BOC - using URL encoded BOC
     console.log('📡 Getting transaction hash from BOC...');
+    const encodedBoc = encodeURIComponent(boc);
     let messageResponse;
     try {
       messageResponse = await fetch(
-        `https://tonapi.io/v2/blockchain/message/${boc}`, 
+        `https://tonapi.io/v2/blockchain/message/${encodedBoc}`, 
         {
           headers: {
             'Authorization': `Bearer ${tonApiKey}`,
