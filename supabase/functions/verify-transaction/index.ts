@@ -23,7 +23,8 @@ serve(async (req) => {
     console.log('🔍 Received transaction hash:', transaction_hash);
 
     let attempts = 0;
-    const maxAttempts = 3;
+    const maxAttempts = 10; // Увеличиваем количество попыток
+    const initialDelay = 3000; // Начальная задержка 3 секунды
     
     while (attempts < maxAttempts) {
       try {
@@ -47,7 +48,8 @@ serve(async (req) => {
           
           if (tonApiResponse.status === 404) {
             console.log('⏳ Transaction not found yet, will retry...');
-            await sleep(2000);
+            // Увеличиваем задержку с каждой попыткой
+            await sleep(initialDelay * Math.pow(1.5, attempts));
             attempts++;
             continue;
           }
@@ -58,6 +60,14 @@ serve(async (req) => {
         const transactionData = await tonApiResponse.json();
         console.log('✅ Transaction data:', transactionData);
 
+        // Проверяем, что транзакция действительно финализирована
+        if (!transactionData.lt) {
+          console.log('⏳ Transaction not finalized yet, will retry...');
+          await sleep(initialDelay * Math.pow(1.5, attempts));
+          attempts++;
+          continue;
+        }
+
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
         const status = transactionData.status === 'success' ? 'confirmed' : 'failed';
@@ -65,7 +75,10 @@ serve(async (req) => {
 
         const { error: updateError } = await supabase
           .from('transactions')
-          .update({ status })
+          .update({ 
+            status,
+            updated_at: new Date().toISOString()
+          })
           .eq('transaction_hash', transaction_hash);
 
         if (updateError) {
@@ -85,7 +98,7 @@ serve(async (req) => {
           throw error;
         }
         console.log(`❌ Attempt ${attempts + 1} failed:`, error);
-        await sleep(2000);
+        await sleep(initialDelay * Math.pow(1.5, attempts));
         attempts++;
       }
     }
