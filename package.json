@@ -41,6 +41,8 @@
     "@radix-ui/react-tooltip": "^1.1.4",
     "@supabase/supabase-js": "^2.48.1",
     "@tanstack/react-query": "^5.56.2",
+    "@ton-api/client": "^0.3.1",
+    "@ton/core": "^0.60.0",
     "@tonconnect/ui": "^2.0.11",
     "@tonconnect/ui-react": "^2.0.11",
     "class-variance-authority": "^0.7.1",
@@ -63,6 +65,7 @@
     "tailwind-merge": "^2.5.2",
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^0.9.3",
+    "vite-plugin-node-polyfills": "^0.23.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
