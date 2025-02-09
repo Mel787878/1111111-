@@ -29,10 +29,7 @@ interface TonApiWebhookPayload {
   };
 }
 
-export default async function handler(
-  request: VercelRequest,
-  response: VercelResponse
-) {
+const handler = async (request: VercelRequest, response: VercelResponse) => {
   // Обработка CORS preflight запросов
   if (request.method === 'OPTIONS') {
     return response.status(200).end();
@@ -84,4 +81,6 @@ export default async function handler(
     console.error('❌ Webhook error:', error);
     return response.status(500).json({ error: 'Internal server error' });
   }
-}
+};
+
+export default handler;
