@@ -4,6 +4,7 @@ import { Template } from "@/types/template";
 import { TemplateCard } from "./market/TemplateCard";
 import { SocialLinks } from "./SocialLinks";
 import { TonConnectButton } from "@tonconnect/ui-react";
+import { useTonWallet } from "@tonconnect/ui-react";
 
 const mockTemplates: Template[] = [
   {
@@ -36,6 +37,8 @@ const mockTemplates: Template[] = [
 ];
 
 export const CryptoMarket = () => {
+  const wallet = useTonWallet();
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#9b87f5]/10 via-[#7E69AB]/10 to-[#6E59A5]/10">
       <div className="py-20 px-4">
@@ -46,10 +49,17 @@ export const CryptoMarket = () => {
           className="container mx-auto"
         >
           <div className="flex justify-between items-center mb-12">
-            <h2 className="text-4xl md:text-5xl font-bold text-center bg-gradient-to-r from-[#9b87f5] via-[#D946EF] to-[#8B5CF6] bg-clip-text text-transparent">
-              Landing Page Templates
-            </h2>
-            <TonConnectButton className="!bg-primary hover:!bg-primary/90" />
+            <div>
+              <h2 className="text-4xl md:text-5xl font-bold text-center bg-gradient-to-r from-[#9b87f5] via-[#D946EF] to-[#8B5CF6] bg-clip-text text-transparent">
+                Landing Page Templates
+              </h2>
+              {wallet && (
+                <p className="text-gray-400 mt-2">
+                  Wallet: {wallet.account.address.slice(0, 6)}...{wallet.account.address.slice(-4)}
+                </p>
+              )}
+            </div>
+            <TonConnectButton />
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">

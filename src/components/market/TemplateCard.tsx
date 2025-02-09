@@ -27,7 +27,6 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
     setIsProcessing(true);
     try {
       const priceInNanoTons = Math.floor(template.price * 1000000000);
-      
       const transaction = {
         validUntil: Math.floor(Date.now() / 1000) + 300,
         messages: [
@@ -38,15 +37,16 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
         ],
       };
 
+      console.log("Sending transaction:", transaction);
       const result = await tonConnectUI.sendTransaction(transaction);
-      console.log("Transaction result:", result);
+      console.log("✅ Transaction result:", result);
       
       toast({
         title: "Purchase successful",
         description: "Your template purchase was successful!",
       });
     } catch (error: any) {
-      console.error("Transaction error:", error);
+      console.error("❌ Transaction error:", error);
       toast({
         title: "Transaction failed",
         description: error.message || "Failed to complete the purchase",
@@ -102,7 +102,7 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
               onClick={handlePurchase}
               disabled={isProcessing}
             >
-              {isProcessing ? "Processing..." : "Purchase"}
+              {isProcessing ? "Processing..." : wallet ? "Purchase" : "Connect Wallet"}
             </Button>
           </div>
         </CardFooter>
