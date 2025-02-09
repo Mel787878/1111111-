@@ -17,12 +17,11 @@ serve(async (req) => {
   }
 
   try {
-    // Get transaction hash from request
     const { transaction_hash } = await req.json();
     console.log('🔍 Verifying transaction:', transaction_hash);
     
     // Call TON API to check transaction status
-    const tonApiResponse = await fetch(
+    const response = await fetch(
       `https://tonapi.io/v2/blockchain/transactions/${transaction_hash}`, 
       {
         headers: {
@@ -32,30 +31,31 @@ serve(async (req) => {
       }
     );
 
-    // Handle 404 - Transaction not found yet
-    if (tonApiResponse.status === 404) {
-      console.log('⏳ Transaction not found yet:', transaction_hash);
+    const responseData = await response.text();
+    console.log('📝 TON API response:', responseData);
+
+    // Handle different response scenarios
+    if (response.status === 404) {
+      console.log('⏳ Transaction not found yet');
       return new Response(
         JSON.stringify({ status: 'pending' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Handle other API errors
-    if (!tonApiResponse.ok) {
-      const errorText = await tonApiResponse.text();
-      console.error('❌ TON API error:', errorText);
+    if (!response.ok) {
+      console.error('❌ TON API error:', responseData);
       return new Response(
         JSON.stringify({ 
           status: 'error',
-          message: `TON API error: ${tonApiResponse.status}`
+          message: `TON API error: ${response.status}`
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     // Parse successful response
-    const transactionData = await tonApiResponse.json();
+    const transactionData = JSON.parse(responseData);
     console.log('✅ Transaction data:', transactionData);
 
     // Initialize Supabase client
