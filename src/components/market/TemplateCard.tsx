@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { getJettonTransferRequest } from "@/utils/jetton-transfer";
 import tonApi from "@/utils/ton-api";
+import { Address } from "@ton/core";
 
 interface TemplateCardProps {
   template: Template;
@@ -23,14 +24,18 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
 
   const verifyTransaction = async (tx: { boc: string }): Promise<string> => {
     try {
-      // Parse the message from the transaction
-      const message = await tonApi.blockchain.parseMessage({ boc: tx.boc });
+      // Parse the message from the transaction using v2 endpoint
+      const message = await tonApi.blockchain.parseTransactionBoc({ boc: tx.boc });
       
       // Wait for transaction propagation
       await new Promise(resolve => setTimeout(resolve, 5000));
       
-      // Get the transaction status
-      const transactions = await tonApi.accounts.getAccountTransactions(message.source);
+      // Get the transaction status using v2 endpoint
+      const addr = Address.parse(message.destination);
+      const transactions = await tonApi.blockchain.getAccountTransactionsV2({ 
+        accountId: addr,
+        limit: 10 
+      });
       
       // Find the matching transaction
       const transaction = transactions.transactions.find(t => 
