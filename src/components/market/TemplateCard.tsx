@@ -7,6 +7,7 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { useTonConnectUI, useTonWallet } from "@tonconnect/ui-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface TemplateCardProps {
   template: Template;
@@ -18,35 +19,118 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
 
-  const handlePurchase = async () => {
-    if (!wallet) {
-      tonConnectUI.openModal();
-      return;
-    }
-
-    setIsProcessing(true);
+  const verifyTransaction = async (transactionHash: string) => {
     try {
-      const priceInNanoTons = Math.floor(template.price * 1000000000);
-      
+      console.log("🔍 Verifying transaction:", transactionHash);
+      const { data, error } = await supabase.functions.invoke('verify-transaction', {
+        body: { transaction_hash: transactionHash }
+      });
+
+      if (error) {
+        console.error("❌ Verification API error:", error);
+        throw error;
+      }
+
+      console.log("✅ Verification response:", data);
+      return data.status;
+    } catch (error) {
+      console.error("❌ Verification error:", error);
+      throw error;
+    }
+  };
+
+  const handlePurchase = async () => {
+    try {
+      if (!wallet) {
+        await tonConnectUI.connectWallet();
+        return;
+      }
+
+      setIsProcessing(true);
+      const priceInNanoTons = Math.floor(template.price * 1_000_000_000).toString();
+
       const transaction = {
         validUntil: Math.floor(Date.now() / 1000) + 300,
         messages: [
           {
             address: "UQCt1L-jsQiZ_lpT-PVYVwUVb-rHDuJd-bCN6GdZbL1_qznC",
-            amount: priceInNanoTons.toString(),
+            amount: priceInNanoTons,
           },
         ],
       };
 
+      console.log("📤 Sending transaction:", transaction);
       const result = await tonConnectUI.sendTransaction(transaction);
-      console.log("Transaction result:", result);
-      
+      console.log("✅ Transaction result:", result);
+
+      const { error: insertError } = await supabase
+        .from('transactions')
+        .insert({
+          transaction_hash: result.boc,
+          user_wallet: wallet.account.address,
+          template_id: template.id,
+          amount: template.price,
+          status: 'pending'
+        });
+
+      if (insertError) {
+        console.error("Insert error:", insertError);
+        throw insertError;
+      }
+
       toast({
-        title: "Purchase successful",
-        description: "Your template purchase was successful!",
+        title: "Purchase initiated",
+        description: "Your transaction is being processed. We'll notify you once it's confirmed.",
       });
+
+      // Start verification process with retries
+      let attempts = 0;
+      const maxAttempts = 10;
+      const verificationInterval = setInterval(async () => {
+        try {
+          if (attempts >= maxAttempts) {
+            clearInterval(verificationInterval);
+            console.log("❌ Max verification attempts reached");
+            toast({
+              title: "Verification timeout",
+              description: "Please check your wallet for transaction status.",
+              variant: "destructive",
+            });
+            return;
+          }
+
+          console.log(`🔄 Verification attempt ${attempts + 1} of ${maxAttempts}`);
+          const status = await verifyTransaction(result.boc);
+          
+          if (status === 'confirmed') {
+            clearInterval(verificationInterval);
+            toast({
+              title: "Purchase successful",
+              description: "Your template purchase was confirmed!",
+            });
+          } else if (status === 'failed') {
+            clearInterval(verificationInterval);
+            toast({
+              title: "Purchase failed",
+              description: "Your transaction failed to process.",
+              variant: "destructive",
+            });
+          }
+          
+          attempts++;
+        } catch (error) {
+          console.error(`❌ Verification attempt ${attempts + 1} failed:`, error);
+          attempts++;
+        }
+      }, 3000); // Check every 3 seconds
+
+      // Cleanup interval after 5 minutes
+      setTimeout(() => {
+        clearInterval(verificationInterval);
+      }, 300000);
+
     } catch (error: any) {
-      console.error("Transaction error:", error);
+      console.error("❌ Transaction error:", error);
       toast({
         title: "Transaction failed",
         description: error.message || "Failed to complete the purchase",
@@ -95,14 +179,14 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
         <CardFooter className="p-6 pt-0 mt-auto">
           <div className="w-full flex items-center justify-between">
             <span className="text-2xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-              ${template.price} TON
+              {template.price} TON
             </span>
             <Button 
               className="bg-gradient-to-r from-primary to-secondary hover:from-primary/90 hover:to-secondary/90 text-white"
               onClick={handlePurchase}
               disabled={isProcessing}
             >
-              {isProcessing ? "Processing..." : "Purchase"}
+              {isProcessing ? "Processing..." : wallet ? "Purchase" : "Connect Wallet"}
             </Button>
           </div>
         </CardFooter>
