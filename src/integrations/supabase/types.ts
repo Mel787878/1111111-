@@ -9,7 +9,39 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      transactions: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          status: Database["public"]["Enums"]["transaction_status"]
+          template_id: string
+          transaction_hash: string
+          updated_at: string
+          user_wallet: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          id?: string
+          status?: Database["public"]["Enums"]["transaction_status"]
+          template_id: string
+          transaction_hash: string
+          updated_at?: string
+          user_wallet: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          status?: Database["public"]["Enums"]["transaction_status"]
+          template_id?: string
+          transaction_hash?: string
+          updated_at?: string
+          user_wallet?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -18,7 +50,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      transaction_status: "pending" | "confirmed" | "failed"
     }
     CompositeTypes: {
       [_ in never]: never
