@@ -19,18 +19,13 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
 
-  const verifyTransaction = async (transactionHash: string) => {
-    try {
-      const { data, error } = await supabase.functions.invoke('verify-transaction', {
-        body: { transaction_hash: transactionHash }
-      });
+  const verifyTransaction = async (transactionHash: string): Promise<string> => {
+    const { data, error } = await supabase.functions.invoke('verify-transaction', {
+      body: { transaction_hash: transactionHash }
+    });
 
-      if (error) throw error;
-      return data.status;
-    } catch (error) {
-      console.error('❌ Verification error:', error);
-      throw error;
-    }
+    if (error) throw error;
+    return data.status;
   };
 
   const handlePurchase = async () => {
@@ -43,6 +38,7 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
       setIsProcessing(true);
       const priceInNanoTons = Math.floor(template.price * 1_000_000_000).toString();
 
+      // Prepare transaction
       const transaction = {
         validUntil: Math.floor(Date.now() / 1000) + 300,
         messages: [
@@ -53,10 +49,11 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
         ],
       };
 
-      console.log("📤 Sending transaction:", transaction);
+      // Send transaction
       const result = await tonConnectUI.sendTransaction(transaction);
       console.log("✅ Transaction sent:", result);
 
+      // Save transaction to database
       const { error: insertError } = await supabase
         .from('transactions')
         .insert({
@@ -79,13 +76,14 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
       const maxAttempts = 20;
       const interval = 2000; // 2 seconds
 
-      const checkTransaction = async () => {
+      const checkStatus = async () => {
         if (attempts >= maxAttempts) {
           toast({
             title: "Verification timeout",
             description: "Please check your wallet for the final status",
             variant: "destructive",
           });
+          setIsProcessing(false);
           return;
         }
 
@@ -97,28 +95,33 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
               title: "Purchase successful!",
               description: "Your transaction has been confirmed",
             });
+            setIsProcessing(false);
             return;
-          } else if (status === 'failed') {
+          } 
+          
+          if (status === 'failed') {
             toast({
               title: "Purchase failed",
               description: "The transaction failed to process",
               variant: "destructive",
             });
+            setIsProcessing(false);
             return;
           }
+
+          // If pending, retry after interval
+          attempts++;
+          setTimeout(checkStatus, interval);
           
-          // If pending, retry after delay
-          attempts++;
-          setTimeout(checkTransaction, interval);
         } catch (error) {
-          console.error("❌ Verification attempt failed:", error);
+          console.error("❌ Verification error:", error);
           attempts++;
-          setTimeout(checkTransaction, interval);
+          setTimeout(checkStatus, interval);
         }
       };
 
       // Start verification process
-      checkTransaction();
+      checkStatus();
 
     } catch (error) {
       console.error("❌ Transaction error:", error);
@@ -127,7 +130,6 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
         description: error.message || "Failed to complete the purchase",
         variant: "destructive",
       });
-    } finally {
       setIsProcessing(false);
     }
   };
@@ -185,4 +187,3 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
     </motion.div>
   );
 };
-
