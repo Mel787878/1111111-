@@ -17,15 +17,15 @@ serve(async (req) => {
   }
 
   try {
-    const { boc } = await req.json();
-    console.log('🔍 Starting verification for BOC:', boc);
+    const { transaction_hash } = await req.json();
+    console.log('🔍 Starting verification for transaction:', transaction_hash);
     
-    if (!boc) {
-      console.error('❌ No BOC provided');
+    if (!transaction_hash) {
+      console.error('❌ No transaction hash provided');
       return new Response(
         JSON.stringify({ 
           status: 'error',
-          message: 'BOC is required'
+          message: 'Transaction hash is required'
         }),
         { 
           status: 400,
@@ -34,57 +34,12 @@ serve(async (req) => {
       );
     }
 
-    // First, get the transaction hash from the BOC
-    console.log('📡 Getting transaction hash from BOC...');
-    let messageResponse;
-    try {
-      messageResponse = await fetch(
-        `https://tonapi.io/v2/blockchain/message/${boc}`, 
-        {
-          headers: {
-            'Authorization': `Bearer ${tonApiKey}`,
-            'Accept': 'application/json',
-          },
-        }
-      );
-    } catch (fetchError) {
-      console.error('❌ Failed to fetch message from TON API:', fetchError);
-      return new Response(
-        JSON.stringify({ 
-          status: 'error',
-          message: 'Failed to connect to TON API'
-        }),
-        { 
-          status: 503,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    if (!messageResponse.ok) {
-      console.error('❌ TON API message error:', messageResponse.status);
-      return new Response(
-        JSON.stringify({ 
-          status: 'error',
-          message: 'Failed to get transaction hash from BOC'
-        }),
-        { 
-          status: messageResponse.status,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    const messageData = await messageResponse.json();
-    const transactionHash = messageData.hash;
-    console.log('✅ Got transaction hash:', transactionHash);
-
-    // Now check transaction status with the hash
+    // Check transaction status directly using the hash
     console.log('📡 Checking transaction status...');
     let response;
     try {
       response = await fetch(
-        `https://tonapi.io/v2/blockchain/transactions/${transactionHash}`, 
+        `https://tonapi.io/v2/blockchain/transactions/${transaction_hash}`, 
         {
           headers: {
             'Authorization': `Bearer ${tonApiKey}`,
@@ -164,7 +119,7 @@ serve(async (req) => {
         status,
         updated_at: new Date().toISOString()
       })
-      .eq('transaction_hash', boc);
+      .eq('transaction_hash', transaction_hash);
 
     if (updateError) {
       console.error('❌ Database update error:', updateError);
