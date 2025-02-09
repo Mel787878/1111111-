@@ -20,13 +20,13 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
   const { toast } = useToast();
 
   const handlePurchase = async () => {
-    if (!wallet) {
-      tonConnectUI.openModal();
-      return;
-    }
-
-    setIsProcessing(true);
     try {
+      if (!wallet) {
+        await tonConnectUI.connectWallet();
+        return;
+      }
+
+      setIsProcessing(true);
       const priceInNanoTons = Math.floor(template.price * 1_000_000_000).toString();
 
       const transaction = {
@@ -43,7 +43,6 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
       const result = await tonConnectUI.sendTransaction(transaction);
       console.log("✅ Transaction result:", result);
 
-      // Store transaction in Supabase
       const { error: insertError } = await supabase
         .from('transactions')
         .insert({
@@ -54,14 +53,10 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
           status: 'pending'
         });
 
-      if (insertError) throw insertError;
-
-      // Start verification process
-      const { error: verificationError } = await supabase.functions.invoke('verify-transaction', {
-        body: { transaction_hash: result.boc }
-      });
-
-      if (verificationError) throw verificationError;
+      if (insertError) {
+        console.error("Insert error:", insertError);
+        throw insertError;
+      }
 
       toast({
         title: "Purchase initiated",
@@ -93,12 +88,10 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
             variant: "destructive",
           });
         } else {
-          // If still pending, check again in 5 seconds
           setTimeout(checkTransactionStatus, 5000);
         }
       };
 
-      // Start polling
       setTimeout(checkTransactionStatus, 5000);
 
     } catch (error: any) {
