@@ -53,7 +53,7 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
       const result = await tonConnectUI.sendTransaction(transaction);
       console.log("✅ Transaction sent:", result);
 
-      // Save transaction to database using the boc field
+      // Store transaction in database
       const { error: insertError } = await supabase
         .from('transactions')
         .insert({
@@ -74,7 +74,7 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
       // Check transaction status with retries
       let attempts = 0;
       const maxAttempts = 20;
-      const interval = 2000; // 2 seconds
+      const interval = 3000; // 3 seconds
 
       const checkStatus = async () => {
         if (attempts >= maxAttempts) {
@@ -121,7 +121,7 @@ export const TemplateCard = ({ template }: TemplateCardProps) => {
       };
 
       // Start verification process
-      checkStatus();
+      setTimeout(checkStatus, 3000); // Initial delay to allow transaction to propagate
 
     } catch (error) {
       console.error("❌ Transaction error:", error);
