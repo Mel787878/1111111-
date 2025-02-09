@@ -23,7 +23,7 @@ export const Hero = () => {
           className="mb-8 w-64 h-64 mx-auto"
         >
           <img
-            src="/placeholder.svg"
+            src="/lovable-uploads/17aa593e-807c-49ff-9197-63f9d7df2df0.png"
             alt="REELBRO Character"
             className="w-full h-full object-contain"
           />
