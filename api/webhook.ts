@@ -1,63 +1,129 @@
 
+import { z } from 'zod';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-// Интерфейс для валидации данных от TONAPI
-interface TonApiWebhookPayload {
-  event_id: string;
-  timestamp: number;
-  account_id: string;
-  account: {
-    address: string;
-    is_scam: boolean;
-    last_update: number;
-    status: string;
-    balance: string;
-    interfaces: string[];
-  };
-  transaction_id: string;
-  transaction: {
-    hash: string;
-    lt: string;
-    account_addr: string;
-    now: number;
-    original_value: string;
-    original_forwarded_value: string;
-    value: string;
-    fee: string;
-    other_fee: string;
-    status: string;
-  };
-}
+// Rate limiting configuration
+const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
+const MAX_REQUESTS = 100; // Max requests per window
+const requestLog = new Map<string, { count: number; timestamp: number }>();
+
+// Zod schema for webhook payload validation
+const AccountSchema = z.object({
+  address: z.string(),
+  is_scam: z.boolean(),
+  last_update: z.number(),
+  status: z.string(),
+  balance: z.string(),
+  interfaces: z.array(z.string())
+});
+
+const TransactionSchema = z.object({
+  hash: z.string(),
+  lt: z.string(),
+  account_addr: z.string(),
+  now: z.number(),
+  original_value: z.string(),
+  original_forwarded_value: z.string(),
+  value: z.string(),
+  fee: z.string(),
+  other_fee: z.string(),
+  status: z.string()
+});
+
+const WebhookPayloadSchema = z.object({
+  event_id: z.string(),
+  timestamp: z.number(),
+  account_id: z.string(),
+  account: AccountSchema,
+  transaction_id: z.string(),
+  transaction: TransactionSchema
+});
+
+// Allowed TON addresses to monitor
+const ALLOWED_ADDRESSES = [
+  "UQCt1L-jsQiZ_lpT-PVYVwUVb-rHDuJd-bCN6GdZbL1_qznC",
+  // Add more addresses here as needed
+].map(addr => addr.toLowerCase());
+
+// Helper function for rate limiting
+const checkRateLimit = (ip: string): boolean => {
+  const now = Date.now();
+  const clientData = requestLog.get(ip);
+
+  if (!clientData) {
+    requestLog.set(ip, { count: 1, timestamp: now });
+    return true;
+  }
+
+  if (now - clientData.timestamp > RATE_LIMIT_WINDOW) {
+    requestLog.set(ip, { count: 1, timestamp: now });
+    return true;
+  }
+
+  if (clientData.count >= MAX_REQUESTS) {
+    return false;
+  }
+
+  clientData.count++;
+  return true;
+};
+
+// Helper function for structured logging
+const logEvent = (type: 'info' | 'error' | 'warning', message: string, data?: any) => {
+  const timestamp = new Date().toISOString();
+  console.log(JSON.stringify({
+    timestamp,
+    type,
+    message,
+    ...(data && { data })
+  }));
+};
 
 const handler = async (request: VercelRequest, response: VercelResponse) => {
-  // Обработка CORS preflight запросов
+  // Handle CORS preflight
   if (request.method === 'OPTIONS') {
     return response.status(200).end();
   }
 
+  // Validate request method
   if (request.method !== 'POST') {
+    logEvent('error', 'Invalid method', { method: request.method });
     return response.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Проверка API ключа
+  // Rate limiting
+  const clientIp = request.headers['x-forwarded-for'] || 'unknown';
+  if (!checkRateLimit(clientIp.toString())) {
+    logEvent('warning', 'Rate limit exceeded', { ip: clientIp });
+    return response.status(429).json({ error: 'Too many requests' });
+  }
+
+  // API key validation
   const apiKey = process.env.TONAPI_KEY;
   const authHeader = request.headers.authorization;
 
   if (!apiKey || !authHeader || `Bearer ${apiKey}` !== authHeader) {
-    console.error('❌ Invalid or missing API key');
+    logEvent('error', 'Authentication failed', { authHeader });
     return response.status(401).json({ error: 'Unauthorized' });
   }
 
   try {
-    const payload = request.body as TonApiWebhookPayload;
+    // Validate webhook payload
+    const result = WebhookPayloadSchema.safeParse(request.body);
     
-    // Базовая валидация payload
-    if (!payload.event_id || !payload.transaction || !payload.account) {
-      console.error('❌ Invalid payload structure:', payload);
-      return response.status(400).json({ error: 'Invalid webhook payload structure' });
+    if (!result.success) {
+      logEvent('error', 'Invalid payload structure', { 
+        errors: result.error.issues 
+      });
+      return response.status(400).json({ 
+        error: 'Invalid webhook payload structure',
+        details: result.error.issues
+      });
     }
 
-    console.log('📨 Webhook received:', {
+    const payload = result.data;
+
+    logEvent('info', 'Webhook received', {
       event_id: payload.event_id,
       transaction_hash: payload.transaction.hash,
       account_address: payload.account.address,
@@ -65,20 +131,29 @@ const handler = async (request: VercelRequest, response: VercelResponse) => {
       timestamp: payload.timestamp
     });
 
-    // Проверяем адрес получателя
-    const expectedAddress = "UQCt1L-jsQiZ_lpT-PVYVwUVb-rHDuJd-bCN6GdZbL1_qznC";
-    if (payload.transaction.account_addr.toLowerCase() === expectedAddress.toLowerCase()) {
-      console.log('✅ Transaction to expected address confirmed');
+    // Check if transaction is to one of our monitored addresses
+    const txAddress = payload.transaction.account_addr.toLowerCase();
+    if (ALLOWED_ADDRESSES.includes(txAddress)) {
+      logEvent('info', 'Transaction to monitored address confirmed', {
+        address: txAddress,
+        value: payload.transaction.value
+      });
     } else {
-      console.log('⚠️ Transaction to unexpected address:', payload.transaction.account_addr);
+      logEvent('warning', 'Transaction to unmonitored address', {
+        received: txAddress,
+        allowed: ALLOWED_ADDRESSES
+      });
     }
 
     return response.status(200).json({ 
       status: 'success',
       event_id: payload.event_id 
     });
+
   } catch (error) {
-    console.error('❌ Webhook error:', error);
+    logEvent('error', 'Webhook processing error', { 
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
     return response.status(500).json({ error: 'Internal server error' });
   }
 };
