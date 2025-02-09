@@ -34,18 +34,22 @@ serve(async (req) => {
       );
     }
 
-    // First, get the transaction hash from the BOC - using URL encoded BOC
+    // First, get the transaction hash from the BOC using the new messages method
     console.log('📡 Getting transaction hash from BOC...');
-    const encodedBoc = encodeURIComponent(boc);
     let messageResponse;
     try {
       messageResponse = await fetch(
-        `https://tonapi.io/v2/blockchain/message/${encodedBoc}`, 
+        'https://tonapi.io/v2/blockchain/messages', 
         {
+          method: 'POST',
           headers: {
             'Authorization': `Bearer ${tonApiKey}`,
             'Accept': 'application/json',
+            'Content-Type': 'application/json',
           },
+          body: JSON.stringify({
+            boc: boc
+          })
         }
       );
     } catch (fetchError) {
@@ -77,7 +81,21 @@ serve(async (req) => {
     }
 
     const messageData = await messageResponse.json();
-    const transactionHash = messageData.hash;
+    if (!messageData.messages || messageData.messages.length === 0) {
+      console.error('❌ No messages found in BOC');
+      return new Response(
+        JSON.stringify({ 
+          status: 'error',
+          message: 'No messages found in BOC'
+        }),
+        { 
+          status: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    const transactionHash = messageData.messages[0].hash;
     console.log('✅ Got transaction hash:', transactionHash);
 
     // Now check transaction status with the hash
